@@ -235,12 +235,13 @@ export class GeminiService {
         config: {
           systemInstruction: systemInstruction,
           temperature: 0.3,
-          tools: [{ googleSearch: {} }]
+          // tools: [{ googleSearch: {} }]  // Disabled: using LLM only without grounding/search
         }
       });
 
       const text = response.text || "";
-      const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
+      // const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
+      const groundingMetadata = undefined; // Disabled: no grounding when search is off
 
       const parsedData = this.parseJsonResponse(text);
 
