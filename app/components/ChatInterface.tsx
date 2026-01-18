@@ -4,10 +4,12 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Message, IntakeStage, AgentRole } from '../types';
 import { Send, Image as ImageIcon, Loader2, Search, CheckCircle2, Stethoscope, UserCog, Plus, ZoomIn, ZoomOut, X, Bot } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import { groupMessagesByDate } from '../lib/date-utils';
+import { DateSeparator } from './DateSeparator';
 
 interface ChatInterfaceProps {
   messages: Message[];
-  onSendMessage: (text: string, images: string[]) => void;
+  onSendMessage: (text: string, imageUrls: string[]) => void;
   isLoading: boolean;
   currentStage?: IntakeStage;
   completeness?: number;
@@ -104,12 +106,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
   const getBubbleStyle = (msg: Message) => {
     if (msg.role === 'user') {
-      return `${theme.userBubble} text-white rounded-br-none`;
+      return `${theme.userBubble} text-white rounded-br-md`;
     } 
     if (msg.role === 'doctor') {
-      return `bg-indigo-900 text-white border-indigo-700 rounded-bl-none shadow-indigo-100`;
+      return `bg-indigo-900 text-white border-indigo-700 rounded-bl-md shadow-indigo-100`;
     }
-    return `${theme.aiBubble} text-slate-800 border rounded-bl-none`;
+    return `${theme.aiBubble} text-slate-800 border rounded-bl-md`;
   };
 
   const handleImageClick = (img: string) => {
@@ -132,7 +134,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     <div className={`flex flex-col h-full ${theme.bg} relative`}>
       
       {/* Tracker / Header */}
-      <div className="bg-white border-b border-slate-200 p-3 shadow-sm z-10">
+      <div className={`bg-white border-b border-slate-200 p-3 shadow-sm z-10 ${!isDoctor ? 'pb-16' : ''}`}>
         {isDoctor ? (
            <div className="flex items-center gap-2 justify-center py-2 text-purple-800">
               <Stethoscope className="w-5 h-5" />
@@ -183,99 +185,104 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-24 scroll-smooth">
+      <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-4 pb-24 scroll-smooth">
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-slate-400 opacity-50">
             <div className="text-6xl mb-4">{isDoctor ? '🩺' : '📋'}</div>
-            <p className="text-lg">{isDoctor ? 'Start brainstorming with Dr. Gemini.' : 'Dr. Gemini is ready for intake.'}</p>
+            <p className="text-lg">{isDoctor ? 'Start brainstorming with HelloDoctor.' : 'HelloDoctor is ready for intake.'}</p>
           </div>
         )}
         
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-          >
-            <div
-              className={`max-w-[85%] sm:max-w-[75%] rounded-2xl p-4 shadow-sm ${getBubbleStyle(msg)}`}
-            >
-              {msg.role === 'doctor' && (
-                 <div className="flex items-center gap-2 mb-2 pb-2 border-b border-white/20">
-                    <div className="bg-white p-1 rounded-full text-indigo-900">
-                        <UserCog className="w-3 h-3" />
-                    </div>
-                    <span className="text-xs font-bold uppercase tracking-wider">Dr. Smith (Attending)</span>
-                 </div>
-              )}
+        {groupMessagesByDate(messages).map((group, groupIndex) => (
+          <React.Fragment key={group.date.toISOString()}>
+            <DateSeparator date={group.date} />
+            {group.messages.map((msg) => (
+              <div
+                key={msg.id}
+                className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              >
+                <div
+                  className={`max-w-[92%] sm:max-w-[75%] min-w-0 rounded-2xl p-3 sm:p-4 shadow-sm ${getBubbleStyle(msg)}`}
+                >
+                  {msg.role === 'doctor' && (
+                     <div className="flex items-center gap-2 mb-2 pb-2 border-b border-white/20">
+                        <div className="bg-white p-1 rounded-full text-indigo-900">
+                            <UserCog className="w-3 h-3" />
+                        </div>
+                        <span className="text-xs font-bold uppercase tracking-wider">Dr. Smith (Attending)</span>
+                     </div>
+                  )}
 
-              {msg.role === 'model' && msg.activeAgent && !isDoctor && (
-                 <div className="flex items-center gap-2 mb-2">
-                    <div className={`px-2 py-0.5 rounded-full text-[10px] font-bold text-white uppercase tracking-wider flex items-center gap-1 ${AGENT_COLORS[msg.activeAgent] || 'bg-slate-400'}`}>
-                       <Bot className="w-3 h-3" />
-                       {AGENT_LABELS[msg.activeAgent] || msg.activeAgent}
-                    </div>
-                 </div>
-              )}
+                  {msg.role === 'model' && msg.activeAgent && !isDoctor && (
+                     <div className="flex items-center gap-2 mb-2">
+                        <div className={`px-2 py-0.5 rounded-full text-[10px] font-bold text-white uppercase tracking-wider flex items-center gap-1 ${AGENT_COLORS[msg.activeAgent] || 'bg-slate-400'}`}>
+                           <Bot className="w-3 h-3" />
+                           {AGENT_LABELS[msg.activeAgent] || msg.activeAgent}
+                        </div>
+                     </div>
+                  )}
 
-              {msg.images && msg.images.length > 0 && (
-                <div className="flex gap-2 mb-2 flex-wrap">
-                  {msg.images.map((img, idx) => (
-                    <img 
-                      key={idx} 
-                      src={`data:image/jpeg;base64,${img}`} 
-                      alt="User upload" 
-                      className="h-32 w-auto rounded-lg object-cover border border-white/20 cursor-zoom-in hover:opacity-90 transition-opacity"
-                      onClick={() => handleImageClick(img)}
-                    />
-                  ))}
+                  {msg.images && msg.images.length > 0 && (
+                    <div className="flex gap-2 mb-2 flex-wrap">
+                      {msg.images.map((img, idx) => (
+                        <img 
+                          key={idx} 
+                          src={`data:image/jpeg;base64,${img}`} 
+                          alt="User upload" 
+                          className="h-32 w-auto rounded-lg object-cover border border-white/20 cursor-zoom-in hover:opacity-90 transition-opacity"
+                          onClick={() => handleImageClick(img)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                  
+                  <div className={`prose prose-sm max-w-none min-w-0 whitespace-pre-wrap break-words prose-p:whitespace-pre-wrap prose-p:break-words prose-p:my-0 ${
+                    msg.role === 'user' || msg.role === 'doctor' 
+                      ? 'prose-invert text-white prose-p:text-white prose-headings:text-white prose-strong:text-white' 
+                      : `text-slate-700 prose-p:leading-relaxed prose-strong:${theme.accentText} prose-strong:font-bold prose-headings:text-slate-800`
+                    }`}>
+                    <ReactMarkdown>{msg.text}</ReactMarkdown>
+                  </div>
+
+                  {msg.groundingMetadata?.groundingChunks && (
+                    <div className="mt-3 pt-3 border-t border-slate-200/50 text-xs">
+                       <div className="flex items-center gap-1 text-slate-500 mb-1 font-semibold">
+                          <Search className="w-3 h-3" /> Sources
+                       </div>
+                       <div className="flex flex-wrap gap-2">
+                        {msg.groundingMetadata.groundingChunks.map((chunk: any, i: number) => 
+                          chunk.web?.uri ? (
+                            <a 
+                              key={i} 
+                              href={chunk.web.uri} 
+                              target="_blank" 
+                              rel="noreferrer"
+                              className="bg-slate-100 hover:bg-slate-200 text-slate-600 px-2 py-1 rounded truncate max-w-[200px] flex items-center gap-1 transition-colors"
+                            >
+                              {chunk.web.title || new URL(chunk.web.uri).hostname}
+                            </a>
+                          ) : null
+                        )}
+                       </div>
+                    </div>
+                  )}
                 </div>
-              )}
-              
-              <div className={`prose prose-sm max-w-none ${
-                msg.role === 'user' || msg.role === 'doctor' 
-                  ? 'prose-invert text-white prose-p:text-white prose-headings:text-white prose-strong:text-white' 
-                  : `text-slate-700 prose-p:leading-relaxed prose-strong:${theme.accentText} prose-strong:font-bold prose-headings:text-slate-800`
-                }`}>
-                <ReactMarkdown>{msg.text}</ReactMarkdown>
               </div>
-
-              {msg.groundingMetadata?.groundingChunks && (
-                <div className="mt-3 pt-3 border-t border-slate-200/50 text-xs">
-                   <div className="flex items-center gap-1 text-slate-500 mb-1 font-semibold">
-                      <Search className="w-3 h-3" /> Sources
-                   </div>
-                   <div className="flex flex-wrap gap-2">
-                    {msg.groundingMetadata.groundingChunks.map((chunk: any, i: number) => 
-                      chunk.web?.uri ? (
-                        <a 
-                          key={i} 
-                          href={chunk.web.uri} 
-                          target="_blank" 
-                          rel="noreferrer"
-                          className="bg-slate-100 hover:bg-slate-200 text-slate-600 px-2 py-1 rounded truncate max-w-[200px] flex items-center gap-1 transition-colors"
-                        >
-                          {chunk.web.title || new URL(chunk.web.uri).hostname}
-                        </a>
-                      ) : null
-                    )}
-                   </div>
-                </div>
-              )}
-            </div>
-          </div>
+            ))}
+          </React.Fragment>
         ))}
         {isLoading && (
           <div className="flex justify-start">
              <div className="bg-white border border-slate-200 rounded-2xl rounded-bl-none p-4 shadow-sm flex items-center gap-2">
                 <Loader2 className={`w-4 h-4 animate-spin ${theme.accentText}`} />
-                <span className="text-sm text-slate-500 font-medium">Dr. Gemini is consulting sub-agents...</span>
+                <span className="text-sm text-slate-500 font-medium">HelloDoctor is consulting sub-agents...</span>
              </div>
           </div>
         )}
         <div ref={messagesEndRef} />
       </div>
 
-      <div className="absolute bottom-0 left-0 right-0 bg-white/90 backdrop-blur-md border-t border-slate-200 p-4">
+      <div className="absolute bottom-0 left-0 right-0 bg-white/90 backdrop-blur-md border-t border-slate-200 p-3 sm:p-4">
         {selectedImages.length > 0 && (
            <div className="flex gap-2 mb-2 overflow-x-auto items-center p-1">
              {selectedImages.map((img, i) => (
@@ -301,14 +308,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
              </button>
            </div>
         )}
-        <form onSubmit={handleSubmit} className="flex gap-2 items-end max-w-4xl mx-auto">
+        <form onSubmit={handleSubmit} className="flex gap-1.5 sm:gap-2 items-end max-w-4xl mx-auto">
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className={`p-3 text-slate-500 hover:bg-slate-100 rounded-full transition-colors hover:${theme.accentText}`}
+            className={`p-2 sm:p-3 text-slate-500 hover:bg-slate-100 rounded-full transition-colors hover:${theme.accentText}`}
             title="Upload photo"
           >
-            <ImageIcon className="w-6 h-6" />
+            <ImageIcon className="w-5 h-5 sm:w-6 sm:h-6" />
           </button>
           <input 
             type="file" 
@@ -329,7 +336,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 }
               }}
               placeholder={isDoctor ? "Consult with AI, add exam findings, or suggest tests..." : "Describe your symptoms..."}
-              className={`w-full bg-slate-100 border-0 rounded-2xl px-4 py-3 pr-12 text-slate-800 ${theme.ring} focus:ring-2 resize-none max-h-32`}
+              className={`w-full bg-slate-100 border-0 rounded-2xl px-3 py-2 pr-10 sm:px-4 sm:py-3 sm:pr-12 text-slate-800 ${theme.ring} focus:ring-2 resize-none max-h-32`}
               rows={1}
             />
           </div>
@@ -337,7 +344,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
           <button
             type="submit"
             disabled={(!input && selectedImages.length === 0) || isLoading}
-            className={`p-3 text-white rounded-full disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md ${theme.button}`}
+            className={`p-2.5 sm:p-3 text-white rounded-full disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md ${theme.button}`}
           >
             <Send className="w-5 h-5" />
           </button>

@@ -1,0 +1,167 @@
+{
+  "common": {
+    "back": "Back",
+    "next": "Next",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "save": "Save",
+    "delete": "Delete",
+    "edit": "Edit",
+    "close": "Close",
+    "loading": "Loading...",
+    "error": "Error",
+    "success": "Success",
+    "tryAgain": "Try Again",
+    "skip": "Skip",
+    "done": "Done",
+    "gotIt": "Got it!",
+    "yes": "Yes",
+    "no": "No"
+  },
+  "navigation": {
+    "home": "Home",
+    "messages": "Messages",
+    "profile": "Profile",
+    "settings": "Settings",
+    "appointments": "Appointments",
+    "intake": "Medical Form",
+    "back": "Back"
+  },
+  "mode": {
+    "simple": "Simple",
+    "advanced": "Advanced",
+    "switchingTo": "Switching to {{mode}} mode"
+  },
+  "home": {
+    "welcome": "Welcome",
+    "startIntake": "Start Medical Form",
+    "continueIntake": "Continue Medical Form ({{progress}}% done)",
+    "bookAppointment": "Book Appointment",
+    "viewAppointment": "View Appointment",
+    "noDoctor": "Connect to a doctor to get started",
+    "nextSteps": "Here's what you need to do next",
+    "getStarted": "Connect with a doctor to get started",
+    "connectInstructions": "To connect with a doctor:\n\n1. Ask your doctor for their QR code or connection link\n2. Scan the QR code or click the link\n3. Sign in or create an account\n4. You will be automatically connected!"
+  },
+  "intake": {
+    "title": "Medical Form",
+    "progress": "{{current}} of {{total}} questions answered",
+    "nurseJoy": "Nurse Joy",
+    "typing": "{{name}} is typing...",
+    "photoAdded": "✓ Photo added",
+    "encouragement": "Great! Just a few more questions",
+    "complete": "Medical form complete!",
+    "uploadPhoto": "Upload Photo",
+    "startMessage": "Fill out your medical history for {{name}}",
+    "continueMessage": "Continue where you left off"
+  },
+  "booking": {
+    "title": "Book Appointment",
+    "selectWeek": "Select Week",
+    "thisWeek": "This Week",
+    "nextWeek": "Next Week",
+    "selectDay": "Select Day",
+    "selectTime": "Select Time",
+    "morning": "Morning",
+    "afternoon": "Afternoon",
+    "evening": "Evening",
+    "confirmBooking": "Confirm Booking",
+    "appointmentWith": "Appointment with Dr. {{name}}",
+    "date": "Date",
+    "time": "Time",
+    "location": "Location",
+    "success": "Appointment booked successfully!",
+    "unavailable": "Unavailable",
+    "intakeCompleteMessage": "Your medical form is complete. Book with {{name}}"
+  },
+  "messages": {
+    "title": "Messages",
+    "noMessages": "No messages yet",
+    "typeMessage": "Type a message...",
+    "send": "Send",
+    "sent": "Sent",
+    "delivered": "Delivered",
+    "read": "Read"
+  },
+  "settings": {
+    "title": "Settings",
+    "language": "Language",
+    "mode": "Mode",
+    "notifications": "Notifications",
+    "voice": "Voice",
+    "tutorial": "Tutorial",
+    "showTutorial": "Show Tutorial",
+    "logout": "Logout",
+    "logoutButton": "Logout",
+    "logoutConfirm": "Are you sure you want to logout?",
+    "logoutConfirmTitle": "Confirm Logout",
+    "logoutConfirmMessage": "Are you sure you want to logout?",
+    "loggingOut": "Logging out...",
+    "logoutError": "Logout Failed",
+    "logoutErrorMessage": "Unable to logout. Please try again.",
+    "english": "English",
+    "luganda": "Luganda",
+    "swahili": "Swahili",
+    "appointmentReminders": "Appointment Reminders",
+    "messageNotifications": "Message Notifications",
+    "enableVoice": "Enable Voice Input"
+  },
+  "tutorial": {
+    "step1Title": "Connect to Doctor",
+    "step1Description": "Scan QR code or use link to connect with your doctor",
+    "step2Title": "Fill Medical Form",
+    "step2Description": "Answer simple questions about your health",
+    "step3Title": "Book Appointment",
+    "step3Description": "Choose a time that works for you"
+  },
+  "help": {
+    "title": "Help",
+    "needHelp": "Need help?",
+    "callSupport": "Call Support",
+    "whatsappSupport": "WhatsApp Support",
+    "emergency": "Emergency"
+  },
+  "errors": {
+    "noInternet": "No internet - will sync when connected 📡",
+    "syncing": "Syncing your changes... ⏳",
+    "syncFailed": "Some changes couldn't sync. Try again? 🔄",
+    "connectionProblem": "Connection problem. Try again? 🔄",
+    "serverError": "Something went wrong. We're fixing it! 🔧",
+    "timeout": "Taking too long. Try again? ⏱️",
+    "imageTooLarge": "Image too big. Please choose a smaller one 📸",
+    "invalidFormat": "Please choose a photo (JPG or PNG) 🖼️",
+    "uploadFailed": "Upload failed. Try again? 🔄",
+    "cameraPermission": "Camera needed for photos. Enable in Settings? 📷",
+    "microphonePermission": "Microphone needed for voice. Enable in Settings? 🎤",
+    "locationPermission": "Location helps find nearby doctors. Enable? 📍",
+    "requiredField": "Please enter your {{field}} ✏️",
+    "invalidPhone": "Phone number should be 10 digits 📱",
+    "invalidEmail": "Please check your email address 📧",
+    "pastDate": "Please choose a future date"
+  },
+  "confirmation": {
+    "connected": "Connected to Dr. {{name}}!",
+    "intakeComplete": "Medical form complete!",
+    "appointmentBooked": "Appointment booked!",
+    "messageSent": "Message sent!"
+  },
+  "voice": {
+    "recording": "Recording...",
+    "processing": "Processing...",
+    "tapToRecord": "Tap to record",
+    "cancel": "Cancel"
+  },
+  "offline": {
+    "banner": "No internet - will sync when connected",
+    "queuedActions": "{{count}} action queued",
+    "queuedActions_plural": "{{count}} actions queued"
+  },
+  "dateTime": {
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "tomorrow": "Tomorrow",
+    "at": "at",
+    "am": "AM",
+    "pm": "PM"
+  }
+}

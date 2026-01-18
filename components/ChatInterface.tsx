@@ -191,7 +191,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-slate-400 opacity-50">
             <div className="text-6xl mb-4">{isDoctor ? '🩺' : '📋'}</div>
-            <p className="text-lg">{isDoctor ? 'Start brainstorming with Dr. Gemini.' : 'Dr. Gemini is ready for intake.'}</p>
+            <p className="text-lg">{isDoctor ? 'Start brainstorming with HelloDoctor.' : 'HelloDoctor is ready for intake.'}</p>
           </div>
         )}
         
@@ -275,7 +275,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
           <div className="flex justify-start">
              <div className="bg-white border border-slate-200 rounded-2xl rounded-bl-none p-4 shadow-sm flex items-center gap-2">
                 <Loader2 className={`w-4 h-4 animate-spin ${theme.accentText}`} />
-                <span className="text-sm text-slate-500 font-medium">Dr. Gemini is consulting sub-agents...</span>
+                <span className="text-sm text-slate-500 font-medium">HelloDoctor is consulting sub-agents...</span>
              </div>
           </div>
         )}

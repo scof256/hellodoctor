@@ -43,6 +43,7 @@ export interface MedicalData {
   hpi: string | null;
   medicalRecords: string[];
   recordsCheckCompleted: boolean;
+  historyCheckCompleted?: boolean;
   medications: string[];
   allergies: string[];
   pastMedicalHistory: string[];
@@ -88,6 +89,7 @@ export const INITIAL_MEDICAL_DATA: MedicalData = {
   hpi: null,
   medicalRecords: [],
   recordsCheckCompleted: false,
+  historyCheckCompleted: false,
   medications: [],
   allergies: [],
   pastMedicalHistory: [],

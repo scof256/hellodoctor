@@ -1,0 +1,28 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { I18nextProvider } from 'react-i18next';
+import i18n from '../lib/i18n';
+
+/**
+ * Client-side i18n provider component
+ * Initializes i18next and provides translation context to children
+ */
+export function I18nProvider({ children }: { children: React.ReactNode }) {
+  const [isInitialized, setIsInitialized] = useState(i18n.isInitialized);
+
+  useEffect(() => {
+    // Ensure i18n is initialized
+    if (!i18n.isInitialized) {
+      i18n.init().then(() => {
+        setIsInitialized(true);
+      });
+    } else {
+      setIsInitialized(true);
+    }
+  }, []);
+
+  // Always render children to maintain consistent hook calls
+  // i18next will use fallback language until initialized
+  return <I18nextProvider i18n={i18n}>{children}</I18nextProvider>;
+}

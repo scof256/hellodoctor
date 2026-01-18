@@ -47,7 +47,7 @@ const DirectMessageModal: React.FC<DirectMessageModalProps> = ({ isOpen, onClose
         <div className="p-6">
             <div className="bg-blue-50 border border-blue-100 p-3 rounded-lg mb-4 flex gap-3 text-sm text-blue-800">
                 <MessageSquare className="w-5 h-5 shrink-0" />
-                <p>This message will appear in the patient's chat stream as coming directly from <strong>Dr. Smith</strong>.</p>
+                <p>This message will appear in the patient&apos;s chat stream as coming directly from <strong>Dr. Smith</strong>.</p>
             </div>
 
             <form onSubmit={handleSubmit}>

@@ -1,0 +1,164 @@
+{
+  "common": {
+    "back": "Rudi",
+    "next": "Ifuatayo",
+    "cancel": "Ghairi",
+    "confirm": "Thibitisha",
+    "save": "Hifadhi",
+    "delete": "Futa",
+    "edit": "Hariri",
+    "close": "Funga",
+    "loading": "Inapakia...",
+    "error": "Kosa",
+    "success": "Imefanikiwa",
+    "tryAgain": "Jaribu Tena",
+    "skip": "Ruka",
+    "done": "Imekamilika",
+    "gotIt": "Nimeelewa!",
+    "yes": "Ndiyo",
+    "no": "Hapana"
+  },
+  "navigation": {
+    "home": "Nyumbani",
+    "messages": "Ujumbe",
+    "profile": "Wasifu",
+    "settings": "Mipangilio",
+    "appointments": "Miadi",
+    "intake": "Fomu ya Afya",
+    "back": "Rudi"
+  },
+  "mode": {
+    "simple": "Rahisi",
+    "advanced": "Ya Juu",
+    "switchingTo": "Inabadilisha hadi {{mode}}"
+  },
+  "home": {
+    "welcome": "Karibu",
+    "startIntake": "Anza Fomu ya Afya",
+    "continueIntake": "Endelea na Fomu ({{progress}}% imekamilika)",
+    "bookAppointment": "Weka Miadi",
+    "viewAppointment": "Angalia Miadi",
+    "noDoctor": "Unganisha na daktari ili kuanza",
+    "nextSteps": "Hivi ndivyo unavyohitaji kufanya ifuatayo",
+    "getStarted": "Unganisha na daktari ili kuanza",
+    "connectInstructions": "Ili kuunganisha na daktari:\n\n1. Uliza daktari wako msimbo wa QR au kiungo cha kuunganisha\n2. Scan msimbo wa QR au bonyeza kiungo\n3. Ingia au unda akaunti\n4. Utaunganishwa moja kwa moja!"
+  },
+  "intake": {
+    "title": "Fomu ya Afya",
+    "progress": "{{current}} kati ya {{total}} maswali yamejibiwa",
+    "nurseJoy": "Muuguzi Joy",
+    "typing": "{{name}} anaandika...",
+    "photoAdded": "✓ Picha imeongezwa",
+    "encouragement": "Vizuri! Maswali machache tu",
+    "complete": "Fomu ya afya imekamilika!",
+    "uploadPhoto": "Pakia Picha",
+    "startMessage": "Jaza historia yako ya afya kwa {{name}}",
+    "continueMessage": "Endelea kutoka ulipoacha"
+  },
+  "booking": {
+    "title": "Weka Miadi",
+    "selectWeek": "Chagua Wiki",
+    "thisWeek": "Wiki Hii",
+    "nextWeek": "Wiki Ijayo",
+    "selectDay": "Chagua Siku",
+    "selectTime": "Chagua Muda",
+    "morning": "Asubuhi",
+    "afternoon": "Mchana",
+    "evening": "Jioni",
+    "confirmBooking": "Thibitisha Miadi",
+    "appointmentWith": "Miadi na Dkt. {{name}}",
+    "date": "Tarehe",
+    "time": "Muda",
+    "location": "Mahali",
+    "success": "Miadi imewekwa kwa mafanikio!",
+    "unavailable": "Haipatikani",
+    "intakeCompleteMessage": "Fomu yako ya afya imekamilika. Weka miadi na {{name}}"
+  },
+  "messages": {
+    "title": "Ujumbe",
+    "noMessages": "Hakuna ujumbe bado",
+    "typeMessage": "Andika ujumbe...",
+    "send": "Tuma",
+    "sent": "Imetumwa",
+    "delivered": "Imefika",
+    "read": "Imesomwa"
+  },
+  "settings": {
+    "title": "Mipangilio",
+    "language": "Lugha",
+    "mode": "Hali",
+    "notifications": "Arifa",
+    "voice": "Sauti",
+    "tutorial": "Mafunzo",
+    "showTutorial": "Onyesha Mafunzo",
+    "logout": "Toka",
+    "logoutButton": "Toka",
+    "logoutConfirm": "Una uhakika unataka kutoka?",
+    "logoutConfirmTitle": "Thibitisha Kutoka",
+    "logoutConfirmMessage": "Una uhakika unataka kutoka?",
+    "english": "Kiingereza",
+    "luganda": "Luganda",
+    "swahili": "Kiswahili",
+    "appointmentReminders": "Vikumbusho vya Miadi",
+    "messageNotifications": "Arifa za Ujumbe",
+    "enableVoice": "Washa Sauti"
+  },
+  "tutorial": {
+    "step1Title": "Unganisha na Daktari",
+    "step1Description": "Scan QR code au tumia kiungo kuunganisha na daktari wako",
+    "step2Title": "Jaza Fomu ya Afya",
+    "step2Description": "Jibu maswali rahisi kuhusu afya yako",
+    "step3Title": "Weka Miadi",
+    "step3Description": "Chagua muda unaokufaa"
+  },
+  "help": {
+    "title": "Msaada",
+    "needHelp": "Unahitaji msaada?",
+    "callSupport": "Piga Simu Msaada",
+    "whatsappSupport": "WhatsApp Msaada",
+    "emergency": "Dharura"
+  },
+  "errors": {
+    "noInternet": "Hakuna mtandao - itasawazisha inapounganishwa 📡",
+    "syncing": "Inasawazisha mabadiliko yako... ⏳",
+    "syncFailed": "Mabadiliko mengine hayakusawazishwa. Jaribu tena? 🔄",
+    "connectionProblem": "Tatizo la muunganisho. Jaribu tena? 🔄",
+    "serverError": "Kuna tatizo. Tunarekebisha! 🔧",
+    "timeout": "Inachukua muda mrefu. Jaribu tena? ⏱️",
+    "imageTooLarge": "Picha ni kubwa sana. Tafadhali chagua ndogo 📸",
+    "invalidFormat": "Tafadhali chagua picha (JPG au PNG) 🖼️",
+    "uploadFailed": "Upakiaji umeshindwa. Jaribu tena? 🔄",
+    "cameraPermission": "Kamera inahitajika kwa picha. Ruhusu katika Mipangilio? 📷",
+    "microphonePermission": "Kipokea sauti kinahitajika. Ruhusu katika Mipangilio? 🎤",
+    "locationPermission": "Mahali kunasaidia kupata madaktari wa karibu. Ruhusu? 📍",
+    "requiredField": "Tafadhali ingiza {{field}} yako ✏️",
+    "invalidPhone": "Nambari ya simu inapaswa kuwa tarakimu 10 📱",
+    "invalidEmail": "Tafadhali angalia barua pepe yako 📧",
+    "pastDate": "Tafadhali chagua tarehe ya baadaye"
+  },
+  "confirmation": {
+    "connected": "Umeunganishwa na Dkt. {{name}}!",
+    "intakeComplete": "Fomu ya afya imekamilika!",
+    "appointmentBooked": "Miadi imewekwa!",
+    "messageSent": "Ujumbe umetumwa!"
+  },
+  "voice": {
+    "recording": "Inarekodi...",
+    "processing": "Inachakata...",
+    "tapToRecord": "Gusa kurekodi",
+    "cancel": "Ghairi"
+  },
+  "offline": {
+    "banner": "Hakuna mtandao - itasawazisha inapounganishwa",
+    "queuedActions": "{{count}} kitendo kimewekwa foleni",
+    "queuedActions_plural": "{{count}} vitendo vimewekwa foleni"
+  },
+  "dateTime": {
+    "today": "Leo",
+    "yesterday": "Jana",
+    "tomorrow": "Kesho",
+    "at": "saa",
+    "am": "AM",
+    "pm": "PM"
+  }
+}

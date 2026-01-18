@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { GeminiService } from '@/app/lib/gemini-service';
+import { sendAIMessage } from '@/app/lib/ai-service';
 import { ChatRequest, ChatResponse, ErrorResponse } from '@/app/types';
 
 export async function POST(request: Request) {
@@ -28,9 +28,8 @@ export async function POST(request: Request) {
       );
     }
 
-    // Create service instance and process request
-    const geminiService = new GeminiService();
-    const result = await geminiService.sendMessage(
+    // Use unified AI service (switches between Gemini/OpenAI based on AI_PROVIDER env)
+    const result = await sendAIMessage(
       body.history,
       body.medicalData,
       body.mode
@@ -44,7 +43,7 @@ export async function POST(request: Request) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     
     // Check for specific error types
-    if (errorMessage.includes('GEMINI_API_KEY')) {
+    if (errorMessage.includes('API_KEY')) {
       return NextResponse.json<ErrorResponse>(
         { error: 'Configuration error', details: 'API key not configured' },
         { status: 500 }

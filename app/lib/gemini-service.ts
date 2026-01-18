@@ -4,11 +4,11 @@ import {
   Message, 
   MedicalData, 
   INITIAL_THOUGHT, 
-  AgentRole,
-  VALID_AGENT_ROLES 
+  AgentRole
 } from "../types";
+import { determineAgent } from "./agent-router";
 
-// --- A2A PROTOCOL DEFINITIONS ---
+// --- SIMPLIFIED A2A PROTOCOL DEFINITIONS ---
 
 const JSON_SCHEMA_INSTRUCTION = `
 **OUTPUT FORMAT:**
@@ -46,25 +46,7 @@ You must respond with a JSON object wrapped in \`\`\`json ... \`\`\` code blocks
 }
 `;
 
-const ORCHESTRATOR_PROMPT = `
-You are the **A2A Orchestrator**. Analyze the intake state and ROUTE control to the correct Specialist Agent.
-
-**AGENTS:**
-1. **Triage**: Active ONLY if 'chiefComplaint' is missing.
-2. **ClinicalInvestigator**: The primary engine. Active if symptoms are being explored.
-3. **RecordsClerk**: Active if the user mentions having files/results, OR if 'recordsCheckCompleted' is false.
-4. **HistorySpecialist**: Active ONLY to fill gaps in Meds/Allergies/History.
-5. **HandoverSpecialist**: Active when SBAR is complete and Booking is ready.
-
-**ROUTING RULES:**
-- **Contextual Weaving Rule**: If ClinicalInvestigator is exploring a symptom requiring social history, KEEP ClinicalInvestigator active.
-- **Urgency Rule**: New symptoms always trigger **ClinicalInvestigator**.
-- **Completion Rule**: If the patient says "I'm healthy, no other issues," move to HandoverSpecialist.
-
-**OUTPUT:**
-Return ONLY the Agent Name string: "Triage" | "ClinicalInvestigator" | "RecordsClerk" | "HistorySpecialist" | "HandoverSpecialist"
-`;
-
+// Simplified agent prompts based on working demo
 const AGENT_PROMPTS: Record<AgentRole, string> = {
   'Triage': `
     You are the **Triage Specialist Agent**.
@@ -150,38 +132,6 @@ export class GeminiService {
     }
   }
 
-  private async determineAgent(history: any[], currentData: MedicalData): Promise<AgentRole> {
-    const orchestratorPrompt = `
-      ${ORCHESTRATOR_PROMPT}
-      
-      CURRENT DATA STATE:
-      - Chief Complaint: ${currentData.chiefComplaint ? 'Present' : 'Missing'}
-      - HPI Word Count: ${currentData.hpi ? currentData.hpi.split(' ').length : 0}
-      - Records Checked: ${currentData.recordsCheckCompleted}
-      - Meds/History: ${currentData.medications.length > 0 || currentData.pastMedicalHistory.length > 0 ? 'Present' : 'Missing'}
-      
-      LAST USER MESSAGE: "${history[history.length - 1]?.parts?.[0]?.text || ''}"
-    `;
-
-    try {
-      const result = await this.ai.models.generateContent({
-        model: this.model,
-        contents: [{ role: 'user', parts: [{ text: orchestratorPrompt }] }],
-        config: { temperature: 0.1 }
-      });
-      
-      const text = result.text?.trim().replace(/['"]/g, '') || '';
-      
-      if (VALID_AGENT_ROLES.includes(text as AgentRole)) {
-        return text as AgentRole;
-      }
-      return 'ClinicalInvestigator';
-    } catch (e) {
-      console.error("Orchestrator failed, defaulting to Investigator", e);
-      return 'ClinicalInvestigator';
-    }
-  }
-
   async sendMessage(
     history: Message[],
     currentMedicalData: MedicalData,
@@ -191,6 +141,7 @@ export class GeminiService {
     const lastUserMessage = history[history.length - 1];
     let imageAnalysisContext = "";
 
+    // Process any images in the last message
     if (lastUserMessage?.role === 'user' && lastUserMessage.images && lastUserMessage.images.length > 0) {
       const analysisResults = [];
       for (let i = 0; i < lastUserMessage.images.length; i++) {
@@ -212,14 +163,16 @@ export class GeminiService {
     let systemInstruction = "";
 
     if (mode === 'doctor') {
+      // Doctor consultation mode (CDSS)
       systemInstruction = `
-        You are Dr. Gemini (CDSS Mode).
+        You are HelloDoctor (CDSS Mode).
         Context: Chatting with a colleague.
         Data: ${JSON.stringify(currentMedicalData)}
         ${JSON_SCHEMA_INSTRUCTION}
       `;
     } else {
-      activeAgent = await this.determineAgent(chatHistory, currentMedicalData);
+      // Patient intake mode - use simplified deterministic routing
+      activeAgent = determineAgent(currentMedicalData);
       systemInstruction = `
         ${AGENT_PROMPTS[activeAgent]}
         
@@ -235,13 +188,11 @@ export class GeminiService {
         config: {
           systemInstruction: systemInstruction,
           temperature: 0.3,
-          // tools: [{ googleSearch: {} }]  // Disabled: using LLM only without grounding/search
         }
       });
 
       const text = response.text || "";
-      // const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
-      const groundingMetadata = undefined; // Disabled: no grounding when search is off
+      const groundingMetadata = undefined; // No grounding when search is off
 
       const parsedData = this.parseJsonResponse(text);
 
@@ -257,10 +208,11 @@ export class GeminiService {
         };
       }
 
+      // Fallback response processing
       return {
         response: {
           thought: INITIAL_THOUGHT,
-          reply: text.length > 0 ? text : "I'm processing your information...",
+          reply: this.extractPlainTextFallback(text) || "I'm processing your information...",
           updatedData: { currentAgent: activeAgent },
           activeAgent: activeAgent
         },
@@ -269,7 +221,17 @@ export class GeminiService {
 
     } catch (error) {
       console.error("Gemini API Error:", error);
-      throw error;
+      
+      // Fallback error response
+      return {
+        response: {
+          thought: INITIAL_THOUGHT,
+          reply: "I apologize, but I'm having trouble processing your message. Please try again.",
+          updatedData: { currentAgent: activeAgent },
+          activeAgent: activeAgent
+        },
+        groundingMetadata: undefined
+      };
     }
   }
 
@@ -293,6 +255,31 @@ export class GeminiService {
       } catch (e) {
         // Return null if all parsing fails
       }
+    }
+
+    return null;
+  }
+
+  /**
+   * Extract plain text content when JSON parsing fails
+   */
+  private extractPlainTextFallback(text: string): string | null {
+    // Remove code blocks
+    let cleaned = text.replace(/```[\s\S]*?```/g, '').trim();
+    
+    // Remove JSON-like content
+    cleaned = cleaned.replace(/\{[\s\S]*\}/g, '').trim();
+    
+    // If we have meaningful content left, use it
+    if (cleaned.length > 10) {
+      // Truncate if too long
+      return cleaned.length > 500 ? cleaned.substring(0, 500) + '...' : cleaned;
+    }
+
+    // Try to extract any sentence-like content from original
+    const sentences = text.match(/[A-Z][^.!?]*[.!?]/g);
+    if (sentences && sentences.length > 0) {
+      return sentences.slice(0, 3).join(' ');
     }
 
     return null;

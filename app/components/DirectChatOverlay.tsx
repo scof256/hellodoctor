@@ -3,6 +3,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { X, Send, Stethoscope, MessageSquare, Minus } from 'lucide-react';
 import { DirectMessage } from '../types';
+import { groupMessagesByDate } from '../lib/date-utils';
+import { DateSeparator } from './DateSeparator';
 
 interface DirectChatOverlayProps {
   isOpen: boolean;
@@ -83,23 +85,30 @@ const DirectChatOverlay: React.FC<DirectChatOverlayProps> = ({
               </p>
             </div>
           ) : (
-            messages.map((msg) => {
-              const isMe = msg.sender === currentUser;
-              return (
-                <div key={msg.id} className={`flex w-full ${isMe ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[80%] rounded-2xl p-3 text-sm shadow-sm ${
-                    isMe 
-                      ? 'bg-indigo-600 text-white rounded-br-none' 
-                      : 'bg-white text-slate-800 border border-slate-200 rounded-bl-none'
-                  }`}>
-                    <p>{msg.text}</p>
-                    <span className={`text-[10px] block text-right mt-1 ${isMe ? 'text-indigo-200' : 'text-slate-400'}`}>
-                      {new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                    </span>
-                  </div>
-                </div>
-              );
-            })
+            <>
+              {groupMessagesByDate(messages).map((group, groupIndex) => (
+                <React.Fragment key={group.date.toISOString()}>
+                  <DateSeparator date={group.date} />
+                  {group.messages.map((msg) => {
+                    const isMe = msg.sender === currentUser;
+                    return (
+                      <div key={msg.id} className={`flex w-full ${isMe ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`max-w-[80%] rounded-2xl p-3 text-sm shadow-sm ${
+                          isMe 
+                            ? 'bg-indigo-600 text-white rounded-br-none' 
+                            : 'bg-white text-slate-800 border border-slate-200 rounded-bl-none'
+                        }`}>
+                          <p>{msg.text}</p>
+                          <span className={`text-[10px] block text-right mt-1 ${isMe ? 'text-indigo-200' : 'text-slate-400'}`}>
+                            {new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </React.Fragment>
+              ))}
+            </>
           )}
           <div ref={messagesEndRef} />
         </div>

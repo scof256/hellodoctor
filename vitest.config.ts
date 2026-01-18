@@ -7,11 +7,13 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
-    setupFiles: [],
+    setupFiles: ['__tests__/setup.ts'],
+    include: ['__tests__/**/*.test.ts', '__tests__/**/*.test.tsx'],
   },
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './'),
+      '@/app': path.resolve(__dirname, './app'),
+      '@': path.resolve(__dirname, './src'),
     },
   },
 })

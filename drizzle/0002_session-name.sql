@@ -1,0 +1,1 @@
+ALTER TABLE "intake_sessions" ADD COLUMN IF NOT EXISTS "name" text;

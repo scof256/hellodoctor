@@ -231,7 +231,7 @@ export class GeminiService {
     if (mode === 'doctor') {
       // Doctor mode bypasses A2A routing, acts as a Clinical Decision Support System
       systemInstruction = `
-        You are Dr. Gemini (CDSS Mode).
+        You are HelloDoctor (CDSS Mode).
         Context: Chatting with a colleague.
         Data: ${JSON.stringify(currentMedicalData)}
         ${JSON_SCHEMA_INSTRUCTION}
@@ -259,12 +259,13 @@ export class GeminiService {
         config: {
           systemInstruction: systemInstruction,
           temperature: 0.3,
-          tools: [{ googleSearch: {} }] 
+          // tools: [{ googleSearch: {} }] // Grounding disabled
         }
       });
 
       const text = response.text || "";
-      const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
+      // Grounding disabled - set to undefined
+      const groundingMetadata = undefined;
 
       // --- STEP 5: PARSE JSON ---
       let parsedData: any = null;

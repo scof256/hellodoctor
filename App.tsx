@@ -6,6 +6,7 @@ import BookingModal from './components/BookingModal';
 import DirectChatOverlay from './components/DirectChatOverlay';
 import { geminiService } from './services/gemini';
 import { Message, MedicalData, DoctorThought, INITIAL_MEDICAL_DATA, INITIAL_THOUGHT, IntakeStage, DirectMessage } from './types';
+import { calculateUIState } from './lib/agent-router';
 import { Menu, X, CalendarCheck, User, Stethoscope, MessageSquare, Bell } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -52,33 +53,8 @@ const App: React.FC = () => {
 
   // --- Logic to Determine Stage & Completeness ---
   const { stage, completeness } = useMemo(() => {
-    const fields: (keyof MedicalData)[] = [
-      'chiefComplaint', 'hpi', 'medications', 'allergies', 
-      'pastMedicalHistory', 'familyHistory', 'socialHistory'
-    ];
-    let filled = 0;
-    fields.forEach(field => {
-      const val = medicalData[field];
-      if (Array.isArray(val)) {
-        if (val.length > 0) filled++;
-      } else {
-        if (val) filled++;
-      }
-    });
-    if (medicalData.recordsCheckCompleted) filled += 0.5;
-
-    const compScore = Math.min(100, Math.round((filled / fields.length) * 100));
-
-    let currentStage: IntakeStage = 'triage';
-    
-    // Map Agent Role to Stage for smoother UI tracking
-    if (medicalData.currentAgent === 'Triage') currentStage = 'triage';
-    else if (medicalData.currentAgent === 'ClinicalInvestigator') currentStage = 'investigation';
-    else if (medicalData.currentAgent === 'RecordsClerk') currentStage = 'records';
-    else if (medicalData.currentAgent === 'HistorySpecialist') currentStage = 'profile';
-    else if (medicalData.currentAgent === 'HandoverSpecialist') currentStage = 'summary';
-
-    return { stage: currentStage, completeness: compScore };
+    // Use centralized UI state calculation to ensure consistency
+    return calculateUIState(medicalData);
   }, [medicalData]);
 
 

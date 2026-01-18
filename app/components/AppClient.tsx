@@ -3,13 +3,14 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import ChatInterface from './ChatInterface';
 import MedicalSidebar from './MedicalSidebar';
-import BookingModal from './BookingModal';
-import DirectChatOverlay from './DirectChatOverlay';
+import { LazyBookingModal, LazyDirectChatOverlay } from '../lib/lazy-components';
 import { 
   Message, MedicalData, DoctorThought, 
   INITIAL_MEDICAL_DATA, INITIAL_THOUGHT, 
   IntakeStage, DirectMessage, AgentResponse 
 } from '../types';
+import { calculateUIState, determineAgent } from '../lib/agent-router';
+import { mergeMedicalData, validateMedicalData } from '../lib/medical-data-processor';
 import { Menu, X, CalendarCheck, User, Stethoscope, MessageSquare } from 'lucide-react';
 
 const AppClient: React.FC = () => {
@@ -19,7 +20,7 @@ const AppClient: React.FC = () => {
     {
       id: 'welcome',
       role: 'model',
-      text: "Hello. I'm Dr. Gemini. I'm here to gather some preliminary information to prepare a file for your doctor. To start, could you tell me why you need an appointment today?",
+      text: "Hello. I'm HelloDoctor. I'm here to gather some preliminary information to prepare a file for your doctor. To start, could you tell me why you need an appointment today?",
       timestamp: new Date(),
       activeAgent: 'Triage'
     }
@@ -51,74 +52,56 @@ const AppClient: React.FC = () => {
   }, [isDMOpen]);
 
   const { stage, completeness } = useMemo(() => {
-    const fields: (keyof MedicalData)[] = [
-      'chiefComplaint', 'hpi', 'medications', 'allergies', 
-      'pastMedicalHistory', 'familyHistory', 'socialHistory'
-    ];
-    let filled = 0;
-    fields.forEach(field => {
-      const val = medicalData[field];
-      if (Array.isArray(val)) {
-        if (val.length > 0) filled++;
-      } else {
-        if (val) filled++;
-      }
-    });
-    if (medicalData.recordsCheckCompleted) filled += 0.5;
-
-    const compScore = Math.min(100, Math.round((filled / fields.length) * 100));
-
-    let currentStage: IntakeStage = 'triage';
-    
-    if (medicalData.currentAgent === 'Triage') currentStage = 'triage';
-    else if (medicalData.currentAgent === 'ClinicalInvestigator') currentStage = 'investigation';
-    else if (medicalData.currentAgent === 'RecordsClerk') currentStage = 'records';
-    else if (medicalData.currentAgent === 'HistorySpecialist') currentStage = 'profile';
-    else if (medicalData.currentAgent === 'HandoverSpecialist') currentStage = 'summary';
-
-    return { stage: currentStage, completeness: compScore };
+    // Use centralized UI state calculation to ensure consistency
+    return calculateUIState(medicalData);
   }, [medicalData]);
 
   const processResponse = (response: AgentResponse, groundingMetadata: unknown) => {
-    const safeUpdatedData = response.updatedData || {};
+    try {
+      // Use the simplified medical data processor for reliable data merging
+      const updatedMedicalData = mergeMedicalData(
+        medicalData,
+        response.updatedData || {},
+        response.activeAgent
+      );
 
-    setMedicalData(prev => ({
-      ...prev,
-      ...safeUpdatedData,
-      medicalRecords: safeUpdatedData.medicalRecords 
-        ? [...new Set([...prev.medicalRecords, ...safeUpdatedData.medicalRecords])] 
-        : prev.medicalRecords,
-      recordsCheckCompleted: safeUpdatedData.recordsCheckCompleted !== undefined 
-        ? safeUpdatedData.recordsCheckCompleted 
-        : prev.recordsCheckCompleted,
-      medications: safeUpdatedData.medications 
-        ? [...new Set([...prev.medications, ...safeUpdatedData.medications])] 
-        : prev.medications,
-      allergies: safeUpdatedData.allergies 
-        ? [...new Set([...prev.allergies, ...safeUpdatedData.allergies])] 
-        : prev.allergies,
-      pastMedicalHistory: safeUpdatedData.pastMedicalHistory 
-        ? [...new Set([...prev.pastMedicalHistory, ...safeUpdatedData.pastMedicalHistory])] 
-        : prev.pastMedicalHistory,
-      reviewOfSystems: safeUpdatedData.reviewOfSystems 
-        ? [...new Set([...prev.reviewOfSystems, ...safeUpdatedData.reviewOfSystems])] 
-        : prev.reviewOfSystems,
-      clinicalHandover: safeUpdatedData.clinicalHandover 
-        ? safeUpdatedData.clinicalHandover 
-        : prev.clinicalHandover,
-      currentAgent: response.activeAgent || prev.currentAgent
-    }));
-    
-    setThought(response.thought || INITIAL_THOUGHT);
-    
-    return {
-      id: (Date.now() + 1).toString(),
-      role: 'model' as const,
-      text: response.reply || "I apologize, but I am having trouble processing that information right now.",
-      timestamp: new Date(),
-      groundingMetadata,
-      activeAgent: response.activeAgent
-    };
+      // Validate the merged data for consistency
+      const validation = validateMedicalData(updatedMedicalData);
+      if (!validation.isValid) {
+        console.warn('Medical data validation warnings:', validation.errors);
+        // Continue with the data but log warnings for debugging
+      }
+
+      // Update medical data state with merged and validated data
+      setMedicalData(updatedMedicalData);
+      
+      // Update doctor thought with fallback to current thought
+      setThought(response.thought || thought);
+      
+      // Create the message with proper fallbacks
+      return {
+        id: (Date.now() + 1).toString(),
+        role: 'model' as const,
+        text: response.reply || "I apologize, but I am having trouble processing that information right now. Could you please try rephrasing your response?",
+        timestamp: new Date(),
+        groundingMetadata,
+        activeAgent: updatedMedicalData.currentAgent // Use the determined agent from merged data
+      };
+    } catch (error) {
+      console.error('Error processing response:', error);
+      
+      // Fallback: preserve existing medical data and provide error message
+      const fallbackAgent = determineAgent(medicalData);
+      
+      return {
+        id: (Date.now() + 1).toString(),
+        role: 'model' as const,
+        text: "I encountered an issue processing your response. Let me try to continue with what we have so far.",
+        timestamp: new Date(),
+        groundingMetadata,
+        activeAgent: fallbackAgent
+      };
+    }
   };
 
 
@@ -156,12 +139,18 @@ const AppClient: React.FC = () => {
         setMessages([...newHistory, modelMsg]);
       } catch (error) {
         console.error("Failed to send patient message", error);
-        setMessages([...newHistory, {
+        
+        // Provide more helpful error message and maintain agent context
+        const currentAgent = medicalData.currentAgent;
+        const errorMessage = {
           id: Date.now().toString(),
-          role: 'model',
-          text: "I apologize, but I encountered a connection error. Please try again.",
-          timestamp: new Date()
-        }]);
+          role: 'model' as const,
+          text: "I apologize, but I encountered a connection error. Please try again, and I'll continue helping you with your medical intake.",
+          timestamp: new Date(),
+          activeAgent: currentAgent
+        };
+        
+        setMessages([...newHistory, errorMessage]);
       } finally {
         setIsLoading(false);
       }
@@ -190,12 +179,16 @@ const AppClient: React.FC = () => {
         setDoctorMessages([...newHistory, modelMsg]);
       } catch (error) {
         console.error("Failed to send doctor message", error);
-        setDoctorMessages([...newHistory, {
+        
+        // Provide contextual error message for doctor mode
+        const errorMessage = {
           id: Date.now().toString(),
-          role: 'model',
-          text: "I apologize, but I encountered a connection error. Please try again.",
+          role: 'model' as const,
+          text: "I apologize, but I encountered a connection error. Please try again, and I'll continue assisting with the clinical decision support.",
           timestamp: new Date()
-        }]);
+        };
+        
+        setDoctorMessages([...newHistory, errorMessage]);
       } finally {
         setIsLoading(false);
       }
@@ -245,22 +238,20 @@ const AppClient: React.FC = () => {
       setMessages(prev => [...prev, modelMsg]);
     } catch (error) {
       console.error("Failed to trigger topic", error);
+      
+      // Provide helpful feedback when topic trigger fails
+      const errorMessage: Message = {
+        id: `error-${Date.now()}`,
+        role: 'model',
+        text: `I'm having trouble accessing the ${fieldName} topic right now. You can try asking me about it directly, and I'll do my best to help.`,
+        timestamp: new Date(),
+        activeAgent: medicalData.currentAgent
+      };
+      
+      setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handleBookingConfirm = (date: string) => {
-    setMedicalData(prev => ({ ...prev, bookingStatus: 'booked', appointmentDate: date }));
-    setIsBookingModalOpen(false);
-    const confirmMsg: Message = {
-      id: Date.now().toString(),
-      role: 'model',
-      text: `**Appointment Confirmed!** \n\nI have booked you for **${date}** and forwarded the clinical handover note to the doctor.`,
-      timestamp: new Date(),
-      activeAgent: 'HandoverSpecialist'
-    };
-    setMessages(prev => [...prev, confirmMsg]);
   };
 
   const handleSendDirectMessage = (text: string) => {
@@ -310,7 +301,7 @@ const AppClient: React.FC = () => {
               {viewMode === 'doctor' ? '🩺' : '⚕️'}
             </div>
             <div>
-              <h1 className="font-bold text-slate-800 text-lg leading-tight">Dr. Gemini</h1>
+              <h1 className="font-bold text-slate-800 text-lg leading-tight">HelloDoctor</h1>
               <p className="text-xs text-slate-500">
                 {viewMode === 'doctor' ? 'Clinical Decision Support' : 'Automated Intake & Booking'}
               </p>
@@ -390,7 +381,7 @@ const AppClient: React.FC = () => {
           </button>
         </div>
 
-        <DirectChatOverlay 
+        <LazyDirectChatOverlay 
           isOpen={isDMOpen}
           onClose={() => setIsDMOpen(false)}
           messages={directMessages}
@@ -411,10 +402,24 @@ const AppClient: React.FC = () => {
         />
       </div>
 
-      <BookingModal 
+      {/* Booking Modal - Demo mode since no real connection data in standalone demo */}
+      <LazyBookingModal
         isOpen={isBookingModalOpen}
         onClose={() => setIsBookingModalOpen(false)}
-        onConfirm={handleBookingConfirm}
+        connectionId=""
+        doctorId=""
+        onBooked={() => {
+          setMedicalData(prev => ({ ...prev, bookingStatus: 'booked' }));
+          setIsBookingModalOpen(false);
+          const confirmMsg: Message = {
+            id: Date.now().toString(),
+            role: 'model',
+            text: `**Appointment Confirmed!** \n\nYour appointment has been booked and the clinical handover note has been forwarded to the doctor.`,
+            timestamp: new Date(),
+            activeAgent: 'HandoverSpecialist'
+          };
+          setMessages(prev => [...prev, confirmMsg]);
+        }}
       />
       
       {sidebarOpen && (

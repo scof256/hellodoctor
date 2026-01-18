@@ -64,7 +64,7 @@ const MedicalSidebar: React.FC<MedicalSidebarProps> = ({ data, thought, onTopicT
             onClick={() => setActiveTab('handover')}
             className={`flex-1 py-2 text-sm font-medium rounded-md transition-all flex items-center justify-center gap-2 ${activeTab === 'handover' ? 'bg-white text-medical-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
           >
-            <Stethoscope className="w-4 h-4" /> Dr. Handover
+            <Stethoscope className="w-4 h-4" /> SBAR Report
           </button>
         </div>
       </div>

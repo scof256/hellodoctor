@@ -31,6 +31,7 @@ export interface MedicalData {
   hpi: string | null; // History of Present Illness
   medicalRecords: string[]; // Findings from uploaded docs/images
   recordsCheckCompleted: boolean; // Flag to track if we have finished asking/collecting records
+  historyCheckCompleted?: boolean;
   medications: string[];
   allergies: string[];
   pastMedicalHistory: string[];
@@ -69,6 +70,7 @@ export const INITIAL_MEDICAL_DATA: MedicalData = {
   hpi: null,
   medicalRecords: [],
   recordsCheckCompleted: false,
+  historyCheckCompleted: false,
   medications: [],
   allergies: [],
   pastMedicalHistory: [],
