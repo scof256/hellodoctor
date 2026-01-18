@@ -4,16 +4,7 @@
   "installCommand": "npm install",
   "framework": "nextjs",
   "regions": ["iad1"],
-  "env": {
-    "DATABASE_URL": "@database_url",
-    "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY": "@clerk_publishable_key",
-    "CLERK_SECRET_KEY": "@clerk_secret_key",
-    "CLERK_WEBHOOK_SECRET": "@clerk_webhook_secret",
-    "UPLOADTHING_TOKEN": "@uploadthing_token",
-    "GEMINI_API_KEY": "@gemini_api_key",
-    "STREAM_API_KEY": "@stream_api_key",
-    "STREAM_SECRET_KEY": "@stream_secret_key"
-  },
+
   "build": {
     "env": {
       "NEXT_TELEMETRY_DISABLED": "1"
