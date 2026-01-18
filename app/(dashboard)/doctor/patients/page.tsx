@@ -17,7 +17,7 @@ import {
   Eye,
   X,
 } from 'lucide-react';
-import { PatientCardSkeleton } from '@/components/SkeletonComponents';
+import { PatientCardSkeleton } from '@/app/components/SkeletonComponents';
 
 type IntakeStatus = 'not_started' | 'in_progress' | 'ready' | 'reviewed' | 'all';
 

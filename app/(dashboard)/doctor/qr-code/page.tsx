@@ -12,7 +12,7 @@ import {
   Link as LinkIcon,
   ExternalLink,
 } from 'lucide-react';
-import { QRCodeSkeleton } from '@/components/SkeletonComponents';
+import { QRCodeSkeleton } from '@/app/components/SkeletonComponents';
 
 export default function DoctorQRCodePage() {
   const [copied, setCopied] = useState(false);
