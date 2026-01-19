@@ -335,6 +335,16 @@ button[type="submit"]:not(.btn-secondary):not(.btn-outline):active {
   }
 }
 
+/* Auto-pulse: continuous animation */
+.animate-pulse-glow {
+  animation: pulseGlow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Hover-pulse: animation only on hover */
+.animate-pulse-glow-hover:hover {
+  animation: pulseGlow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
 /* Bounce animation for confirmation screen icon */
 @keyframes bounce-once {
   0% {

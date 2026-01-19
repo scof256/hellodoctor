@@ -2,6 +2,26 @@ import { pgTable, uuid, text, timestamp, boolean, integer, jsonb, pgEnum, index,
 import { relations } from 'drizzle-orm';
 import type { MedicalData, SBAR, DoctorThought } from '@/types';
 
+// Type definitions for doctor professional profile
+export interface EducationEntry {
+  id: string; // UUID for client-side management
+  institution: string;
+  degree: string;
+  fieldOfStudy?: string;
+  year: number;
+  isVerified?: boolean;
+}
+
+export interface CertificationEntry {
+  id: string; // UUID for client-side management
+  name: string;
+  issuingOrganization: string;
+  year: number;
+  expiryYear?: number;
+  credentialId?: string;
+  isVerified?: boolean;
+}
+
 // Enums
 export const userRoleEnum = pgEnum('user_role', ['super_admin', 'doctor', 'clinic_admin', 'receptionist', 'patient']);
 export const verificationStatusEnum = pgEnum('verification_status', ['pending', 'verified', 'rejected']);
@@ -66,6 +86,43 @@ export const doctors = pgTable('doctors', {
 }, (table) => [
   uniqueIndex('doctors_slug_idx').on(table.slug),
   uniqueIndex('doctors_user_id_idx').on(table.userId),
+]);
+
+// Doctor professional profiles
+export const doctorProfiles = pgTable('doctor_profiles', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  doctorId: uuid('doctor_id').notNull().references(() => doctors.id, { onDelete: 'cascade' }).unique(),
+  
+  // Professional Information
+  professionalBio: text('professional_bio'), // 50-1000 characters
+  yearsOfExperience: integer('years_of_experience'),
+  
+  // Structured data stored as JSONB
+  specializations: jsonb('specializations').$type<string[]>().default([]),
+  education: jsonb('education').$type<EducationEntry[]>().default([]),
+  certifications: jsonb('certifications').$type<CertificationEntry[]>().default([]),
+  languages: jsonb('languages').$type<string[]>().default([]),
+  
+  // Contact and Location
+  officeAddress: text('office_address'),
+  officePhone: text('office_phone'),
+  officeEmail: text('office_email'),
+  
+  // Profile Photo
+  profilePhotoUrl: text('profile_photo_url'),
+  profilePhotoKey: text('profile_photo_key'), // For UploadThing deletion
+  
+  // Consultation Fee (stored in cents)
+  consultationFee: integer('consultation_fee'),
+  
+  // Metadata
+  completenessScore: integer('completeness_score').notNull().default(0),
+  isPublished: boolean('is_published').notNull().default(false),
+  
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex('doctor_profiles_doctor_id_idx').on(table.doctorId),
 ]);
 
 // Doctor availability (weekly schedule)

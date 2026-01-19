@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { ActionCard } from "./ActionCard";
 import { LanguageSelector } from "./LanguageSelector";
 import { useLocalization } from "../hooks/useLocalization";
-import { ClipboardList, Calendar, CheckCircle2, Clock } from "lucide-react";
+import { ClipboardList, Calendar, CheckCircle2, Clock, QrCode } from "lucide-react";
 import type { ConnectionSummary, AppointmentSummary } from "@/types/dashboard";
 
 interface SimplifiedPatientHomeProps {
@@ -48,19 +48,29 @@ export function SimplifiedPatientHome({
     icon: React.ReactNode;
     iconColor: string;
     progress?: number;
-    isPrimary: boolean;
     onTap: () => void;
   }> = [];
 
+  // ALWAYS add QR scan card first (Requirements: 1.1, 1.2, 2.1, 2.2, 2.3)
+  actionCards.push({
+    key: "qr-scan",
+    title: t('home.scanQR'),
+    subtitle: t('home.scanQRSubtitle'),
+    icon: <QrCode className="w-8 h-8" />,
+    iconColor: "#25D366",
+    onTap: () => {
+      router.push("/patient/scan-qr");
+    },
+  });
+
   if (!primaryConnection) {
-    // No connections - show connect message
+    // No connections - show connect message as second card
     actionCards.push({
       key: "connect",
       title: t('home.noDoctor'),
       subtitle: t('tutorial.step1Description'),
       icon: <ClipboardList className="w-8 h-8" />,
       iconColor: "#25D366",
-      isPrimary: true,
       onTap: () => {
         // Show instructions or navigate to help
         // For now, we'll show an alert with instructions
@@ -86,7 +96,6 @@ export function SimplifiedPatientHome({
         subtitle: `${formattedDate} ${t('dateTime.at')} ${formattedTime} ${t('booking.appointmentWith', { name: doctorName.replace('Dr. ', '') })}`,
         icon: <Calendar className="w-8 h-8" />,
         iconColor: "#25D366",
-        isPrimary: true,
         onTap: () => {
           router.push("/patient/appointments");
         },
@@ -102,7 +111,6 @@ export function SimplifiedPatientHome({
         subtitle: t('booking.intakeCompleteMessage', { name: doctorName }),
         icon: <CheckCircle2 className="w-8 h-8" />,
         iconColor: "#25D366",
-        isPrimary: true,
         onTap: () => {
           router.push(`/patient/intake/${primaryConnection.id}`);
         },
@@ -117,7 +125,6 @@ export function SimplifiedPatientHome({
         icon: <Clock className="w-8 h-8" />,
         iconColor: "#FFA500",
         progress: completeness,
-        isPrimary: true,
         onTap: () => {
           router.push(`/patient/intake/${primaryConnection.id}`);
         },
@@ -130,14 +137,14 @@ export function SimplifiedPatientHome({
         subtitle: t('intake.startMessage', { name: doctorName }),
         icon: <ClipboardList className="w-8 h-8" />,
         iconColor: "#25D366",
-        isPrimary: true,
         onTap: () => {
           router.push(`/patient/intake/${primaryConnection.id}`);
         },
       });
     }
 
-    // Add secondary cards if we have room (max 3 total)
+    // Add secondary cards if we have room (max 3 total, QR scan card already added)
+    // So we can add up to 2 more cards after the primary action
     if (actionCards.length < 3 && connections.length > 1) {
       // Show second doctor if available
       const secondConnection = connections[1];
@@ -157,7 +164,6 @@ export function SimplifiedPatientHome({
             subtitle: `Book appointment with ${secondDoctorName}`,
             icon: <Calendar className="w-8 h-8" />,
             iconColor: "#0088CC",
-            isPrimary: false,
             onTap: () => {
               router.push(`/patient/intake/${secondConnection.id}`);
             },
@@ -170,7 +176,6 @@ export function SimplifiedPatientHome({
             icon: <Clock className="w-8 h-8" />,
             iconColor: "#0088CC",
             progress: secondIntakeStatus.completeness,
-            isPrimary: false,
             onTap: () => {
               router.push(`/patient/intake/${secondConnection.id}`);
             },
@@ -182,7 +187,6 @@ export function SimplifiedPatientHome({
             subtitle: `Fill out medical history for ${secondDoctorName}`,
             icon: <ClipboardList className="w-8 h-8" />,
             iconColor: "#0088CC",
-            isPrimary: false,
             onTap: () => {
               router.push(`/patient/intake/${secondConnection.id}`);
             },
@@ -199,7 +203,6 @@ export function SimplifiedPatientHome({
         subtitle: "Chat with your doctors",
         icon: <span className="text-4xl">💬</span>,
         iconColor: "#0088CC",
-        isPrimary: false,
         onTap: () => {
           router.push("/patient/messages");
         },
@@ -237,7 +240,7 @@ export function SimplifiedPatientHome({
             icon={card.icon}
             iconColor={card.iconColor}
             progress={card.progress}
-            isPrimary={card.isPrimary}
+            pulseMode="hover"
             onTap={card.onTap}
           />
         ))}

@@ -11,7 +11,8 @@ interface ActionCardProps {
   badge?: string | number;
   progress?: number; // 0-100 for progress indicators
   onTap: () => void;
-  isPrimary?: boolean; // Adds pulsing animation
+  isPrimary?: boolean; // DEPRECATED - kept for backward compatibility
+  pulseMode?: 'none' | 'auto' | 'hover'; // Controls animation behavior
   disabled?: boolean;
 }
 
@@ -24,6 +25,7 @@ export function ActionCard({
   progress,
   onTap,
   isPrimary = false,
+  pulseMode,
   disabled = false,
 }: ActionCardProps) {
   const handlePress = (e: React.MouseEvent<HTMLButtonElement> | React.TouchEvent<HTMLButtonElement>) => {
@@ -31,6 +33,19 @@ export function ActionCard({
       handleButtonPress(e, { ripple: true, haptic: false });
       onTap();
     }
+  };
+
+  // Determine animation class based on pulseMode
+  // Maintain backward compatibility: if isPrimary is true and pulseMode is not set, default to 'hover'
+  const getAnimationClass = () => {
+    if (pulseMode === 'auto') return 'animate-pulse-glow';
+    if (pulseMode === 'hover') return 'animate-pulse-glow-hover';
+    if (pulseMode === 'none') return '';
+    
+    // Backward compatibility: isPrimary defaults to hover mode
+    if (isPrimary && !pulseMode) return 'animate-pulse-glow-hover';
+    
+    return '';
   };
 
   return (
@@ -45,7 +60,7 @@ export function ActionCard({
         flex items-center gap-4
         btn-full-feedback
         ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}
-        ${isPrimary ? "animate-pulse-glow" : ""}
+        ${getAnimationClass()}
       `}
       style={{
         boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)",

@@ -178,6 +178,196 @@ export const doctorProfileSchema = z.object({
   consultationFee: z.number().int().min(0).optional().nullable(),
 });
 
+// ============================================================================
+// PROFESSIONAL PROFILE SCHEMAS
+// ============================================================================
+
+/**
+ * Professional biography schema with length constraints.
+ * Requirements: 2.1, 6.1
+ */
+export const professionalBioSchema = z.string()
+  .min(50, 'Biography must be at least 50 characters')
+  .max(1000, 'Biography must not exceed 1000 characters');
+
+/**
+ * Years of experience schema with bounds.
+ * Requirements: 2.3, 6.2
+ */
+export const yearsOfExperienceSchema = z.number()
+  .int('Years of experience must be a whole number')
+  .min(0, 'Years of experience cannot be negative')
+  .max(70, 'Years of experience cannot exceed 70');
+
+/**
+ * Education entry schema with year validation.
+ * Requirements: 2.4, 6.3
+ */
+export const educationEntrySchema = z.object({
+  id: z.string().uuid(),
+  institution: z.string().min(1, 'Institution name is required').max(200, 'Institution name too long'),
+  degree: z.string().min(1, 'Degree is required').max(100, 'Degree name too long'),
+  fieldOfStudy: z.string().max(200, 'Field of study too long').optional(),
+  year: z.number()
+    .int('Year must be a whole number')
+    .min(1950, 'Year must be 1950 or later')
+    .max(new Date().getFullYear(), 'Year cannot be in the future'),
+  isVerified: z.boolean().optional(),
+});
+
+/**
+ * Certification entry schema with year validation.
+ * Requirements: 2.5, 6.3
+ */
+export const certificationEntrySchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().min(1, 'Certification name is required').max(200, 'Certification name too long'),
+  issuingOrganization: z.string().min(1, 'Issuing organization is required').max(200, 'Organization name too long'),
+  year: z.number()
+    .int('Year must be a whole number')
+    .min(1950, 'Year must be 1950 or later')
+    .max(new Date().getFullYear(), 'Year cannot be in the future'),
+  expiryYear: z.number()
+    .int('Expiry year must be a whole number')
+    .min(new Date().getFullYear(), 'Expiry year must be current year or later')
+    .optional(),
+  credentialId: z.string().max(100, 'Credential ID too long').optional(),
+  isVerified: z.boolean().optional(),
+});
+
+/**
+ * Consultation fee schema with decimal validation.
+ * Requirements: 2.7, 6.4
+ */
+export const consultationFeeSchema = z.number()
+  .positive('Consultation fee must be positive')
+  .refine(
+    (val) => {
+      // Check if the number has at most 2 decimal places
+      const decimalPart = val.toString().split('.')[1];
+      return !decimalPart || decimalPart.length <= 2;
+    },
+    'Consultation fee must have at most 2 decimal places'
+  );
+
+/**
+ * Update professional profile schema combining all schemas.
+ * Requirements: 2.1, 2.3, 2.4, 2.5, 2.7, 6.1, 6.2, 6.3, 6.4, 6.5
+ */
+export const updateProfessionalProfileSchema = z.object({
+  professionalBio: professionalBioSchema.optional(),
+  yearsOfExperience: yearsOfExperienceSchema.optional(),
+  specializations: z.array(z.string().min(1).max(100)).max(10, 'Maximum 10 specializations allowed').optional(),
+  education: z.array(educationEntrySchema).max(20, 'Maximum 20 education entries allowed').optional(),
+  certifications: z.array(certificationEntrySchema).max(30, 'Maximum 30 certification entries allowed').optional(),
+  languages: z.array(z.string().min(1).max(50)).max(20, 'Maximum 20 languages allowed').optional(),
+  officeAddress: z.string().max(500, 'Office address too long').optional(),
+  officePhone: phoneSchema,
+  officeEmail: emailSchema.optional(),
+  consultationFee: consultationFeeSchema.optional(),
+});
+
+// ============================================================================
+// PROFILE COMPLETENESS CALCULATION
+// ============================================================================
+
+/**
+ * Type definition for doctor professional profile.
+ * Matches the database schema for doctor_profiles table.
+ */
+export interface DoctorProfile {
+  professionalBio?: string | null;
+  yearsOfExperience?: number | null;
+  specializations?: string[] | null;
+  education?: Array<{
+    id: string;
+    institution: string;
+    degree: string;
+    fieldOfStudy?: string;
+    year: number;
+    isVerified?: boolean;
+  }> | null;
+  certifications?: Array<{
+    id: string;
+    name: string;
+    issuingOrganization: string;
+    year: number;
+    expiryYear?: number;
+    credentialId?: string;
+    isVerified?: boolean;
+  }> | null;
+  languages?: string[] | null;
+  profilePhotoUrl?: string | null;
+  officeAddress?: string | null;
+}
+
+/**
+ * Calculate profile completeness score based on weighted fields.
+ * Returns a score between 0 and 100.
+ * 
+ * Requirements: 5.1, 5.2, 5.4
+ * 
+ * @param profile - The doctor professional profile
+ * @returns Completeness score (0-100)
+ */
+export function calculateProfileCompleteness(profile: DoctorProfile): number {
+  // Define weights for each field (total = 100)
+  const weights = {
+    professionalBio: 20,
+    specializations: 15,
+    yearsOfExperience: 10,
+    education: 15,
+    certifications: 10,
+    languages: 10,
+    profilePhoto: 15,
+    officeAddress: 5,
+  };
+  
+  let score = 0;
+  
+  // Professional bio (must be at least 50 characters)
+  if (profile.professionalBio && profile.professionalBio.length >= 50) {
+    score += weights.professionalBio;
+  }
+  
+  // Specializations (must have at least one)
+  if (profile.specializations && profile.specializations.length > 0) {
+    score += weights.specializations;
+  }
+  
+  // Years of experience (must be non-null and >= 0)
+  if (profile.yearsOfExperience !== null && profile.yearsOfExperience !== undefined && profile.yearsOfExperience >= 0) {
+    score += weights.yearsOfExperience;
+  }
+  
+  // Education (must have at least one entry)
+  if (profile.education && profile.education.length > 0) {
+    score += weights.education;
+  }
+  
+  // Certifications (must have at least one entry)
+  if (profile.certifications && profile.certifications.length > 0) {
+    score += weights.certifications;
+  }
+  
+  // Languages (must have at least one)
+  if (profile.languages && profile.languages.length > 0) {
+    score += weights.languages;
+  }
+  
+  // Profile photo (must have URL)
+  if (profile.profilePhotoUrl) {
+    score += weights.profilePhoto;
+  }
+  
+  // Office address (optional but contributes to completeness)
+  if (profile.officeAddress) {
+    score += weights.officeAddress;
+  }
+  
+  return score;
+}
+
 /**
  * Patient profile schema.
  */

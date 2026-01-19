@@ -2,13 +2,23 @@ import { z } from 'zod';
 import { eq, and } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
 import { createTRPCRouter, publicProcedure, protectedProcedure, doctorProcedure } from '../trpc';
-import { doctors, users, doctorAvailability, doctorBlockedDates } from '@/server/db/schema';
+import { doctors, users, doctorAvailability, doctorBlockedDates, doctorProfiles } from '@/server/db/schema';
 import { 
   generateDoctorQRCode, 
   generateDoctorShareUrl,
   generateQRCodeBuffer,
 } from '@/server/services/qr';
 import { auditService } from '@/server/services/audit';
+import { 
+  updateProfessionalProfileSchema, 
+  calculateProfileCompleteness 
+} from '@/lib/validation';
+import { 
+  canViewProfile, 
+  canEditProfile, 
+  canPublishProfile 
+} from '@/lib/profile-access-control';
+import { UTApi } from 'uploadthing/server';
 
 // Input validation schemas
 const createDoctorProfileSchema = z.object({
@@ -718,4 +728,630 @@ export const doctorRouter = createTRPCRouter({
 
       return { blockedDates };
     }),
+
+  // ============================================================================
+  // PROFESSIONAL PROFILE ENDPOINTS
+  // ============================================================================
+
+  /**
+   * Get professional profile for the authenticated doctor.
+   * Returns full profile data with doctor and user information.
+   * Requirements: 1.5, 2.2
+   */
+  getProfessionalProfile: doctorProcedure.query(async ({ ctx }) => {
+    if (!ctx.doctor) {
+      throw new TRPCError({
+        code: 'NOT_FOUND',
+        message: 'Doctor profile not found.',
+      });
+    }
+
+    // Query the professional profile
+    const profile = await ctx.db.query.doctorProfiles.findFirst({
+      where: eq(doctorProfiles.doctorId, ctx.doctor.id),
+    });
+
+    // If no profile exists, return null (will be created on first update)
+    if (!profile) {
+      return null;
+    }
+
+    // Return full profile data
+    return {
+      ...profile,
+      doctor: {
+        id: ctx.doctor.id,
+        userId: ctx.doctor.userId,
+        slug: ctx.doctor.slug,
+        verificationStatus: ctx.doctor.verificationStatus,
+      },
+      user: {
+        id: ctx.user.id,
+        email: ctx.user.email,
+        firstName: ctx.user.firstName,
+        lastName: ctx.user.lastName,
+        imageUrl: ctx.user.imageUrl,
+      },
+    };
+  }),
+
+  /**
+   * Update professional profile for the authenticated doctor.
+   * Creates profile if it doesn't exist, updates if it does.
+   * Recalculates completeness score after update.
+   * Requirements: 1.2, 1.3, 1.4, 5.3
+   */
+  updateProfessionalProfile: doctorProcedure
+    .input(updateProfessionalProfileSchema)
+    .mutation(async ({ ctx, input }) => {
+      if (!ctx.doctor) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Doctor profile not found.',
+        });
+      }
+
+      // Check if profile exists
+      const existingProfile = await ctx.db.query.doctorProfiles.findFirst({
+        where: eq(doctorProfiles.doctorId, ctx.doctor.id),
+      });
+
+      // Calculate completeness score
+      const completenessScore = calculateProfileCompleteness({
+        professionalBio: input.professionalBio ?? existingProfile?.professionalBio ?? null,
+        yearsOfExperience: input.yearsOfExperience ?? existingProfile?.yearsOfExperience ?? null,
+        specializations: input.specializations ?? existingProfile?.specializations ?? null,
+        education: input.education ?? existingProfile?.education ?? null,
+        certifications: input.certifications ?? existingProfile?.certifications ?? null,
+        languages: input.languages ?? existingProfile?.languages ?? null,
+        profilePhotoUrl: existingProfile?.profilePhotoUrl ?? null,
+        officeAddress: input.officeAddress ?? existingProfile?.officeAddress ?? null,
+      });
+
+      let updatedProfile;
+
+      if (existingProfile) {
+        // Update existing profile
+        const result = await ctx.db
+          .update(doctorProfiles)
+          .set({
+            ...input,
+            completenessScore,
+            updatedAt: new Date(),
+          })
+          .where(eq(doctorProfiles.id, existingProfile.id))
+          .returning();
+
+        updatedProfile = result[0];
+
+        // Log the profile update
+        await auditService.logDataModification(
+          ctx.user.id,
+          'doctor_profile_updated',
+          'doctor_profile',
+          existingProfile.id,
+          existingProfile,
+          input
+        );
+      } else {
+        // Create new profile
+        const result = await ctx.db
+          .insert(doctorProfiles)
+          .values({
+            doctorId: ctx.doctor.id,
+            ...input,
+            completenessScore,
+          })
+          .returning();
+
+        updatedProfile = result[0];
+
+        // Log the profile creation
+        await auditService.log({
+          userId: ctx.user.id,
+          action: 'doctor_profile_created',
+          resourceType: 'doctor_profile',
+          resourceId: updatedProfile!.id,
+          metadata: {
+            doctorId: ctx.doctor.id,
+            completenessScore,
+            ...input,
+          },
+        });
+      }
+
+      if (!updatedProfile) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to update professional profile',
+        });
+      }
+
+      return updatedProfile;
+    }),
+
+  /**
+   * Upload profile photo.
+   * Accepts UploadThing URL and key, deletes old photo if exists.
+   * Recalculates completeness score.
+   * Requirements: 4.3, 4.5
+   */
+  uploadProfilePhoto: doctorProcedure
+    .input(z.object({ 
+      url: z.string().url(), 
+      key: z.string() 
+    }))
+    .mutation(async ({ ctx, input }) => {
+      if (!ctx.doctor) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Doctor profile not found.',
+        });
+      }
+
+      // Get existing profile
+      const existingProfile = await ctx.db.query.doctorProfiles.findFirst({
+        where: eq(doctorProfiles.doctorId, ctx.doctor.id),
+      });
+
+      // Delete old photo if exists
+      if (existingProfile?.profilePhotoKey) {
+        try {
+          const utapi = new UTApi();
+          await utapi.deleteFiles([existingProfile.profilePhotoKey]);
+        } catch (error) {
+          console.error('Failed to delete old profile photo:', error);
+          // Continue anyway - we'll update with new photo
+        }
+      }
+
+      // Calculate new completeness score with photo
+      const completenessScore = calculateProfileCompleteness({
+        professionalBio: existingProfile?.professionalBio ?? null,
+        yearsOfExperience: existingProfile?.yearsOfExperience ?? null,
+        specializations: existingProfile?.specializations ?? null,
+        education: existingProfile?.education ?? null,
+        certifications: existingProfile?.certifications ?? null,
+        languages: existingProfile?.languages ?? null,
+        profilePhotoUrl: input.url,
+        officeAddress: existingProfile?.officeAddress ?? null,
+      });
+
+      let updatedProfile;
+
+      if (existingProfile) {
+        // Update existing profile
+        const result = await ctx.db
+          .update(doctorProfiles)
+          .set({
+            profilePhotoUrl: input.url,
+            profilePhotoKey: input.key,
+            completenessScore,
+            updatedAt: new Date(),
+          })
+          .where(eq(doctorProfiles.id, existingProfile.id))
+          .returning();
+
+        updatedProfile = result[0];
+      } else {
+        // Create new profile with photo
+        const result = await ctx.db
+          .insert(doctorProfiles)
+          .values({
+            doctorId: ctx.doctor.id,
+            profilePhotoUrl: input.url,
+            profilePhotoKey: input.key,
+            completenessScore,
+          })
+          .returning();
+
+        updatedProfile = result[0];
+      }
+
+      if (!updatedProfile) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to upload profile photo',
+        });
+      }
+
+      // Log the photo upload
+      await auditService.log({
+        userId: ctx.user.id,
+        action: 'doctor_profile_photo_uploaded',
+        resourceType: 'doctor_profile',
+        resourceId: updatedProfile.id,
+        metadata: { 
+          url: input.url, 
+          key: input.key,
+          previousPhotoKey: existingProfile?.profilePhotoKey ?? null,
+          type: 'profile_photo' 
+        },
+      });
+
+      return updatedProfile;
+    }),
+
+  /**
+   * Delete profile photo.
+   * Removes photo from UploadThing storage and database.
+   * Recalculates completeness score.
+   * Requirements: 4.5
+   */
+  deleteProfilePhoto: doctorProcedure.mutation(async ({ ctx }) => {
+    if (!ctx.doctor) {
+      throw new TRPCError({
+        code: 'NOT_FOUND',
+        message: 'Doctor profile not found.',
+      });
+    }
+
+    // Get existing profile
+    const existingProfile = await ctx.db.query.doctorProfiles.findFirst({
+      where: eq(doctorProfiles.doctorId, ctx.doctor.id),
+    });
+
+    if (!existingProfile) {
+      throw new TRPCError({
+        code: 'NOT_FOUND',
+        message: 'Professional profile not found.',
+      });
+    }
+
+    if (!existingProfile.profilePhotoKey) {
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: 'No profile photo to delete.',
+      });
+    }
+
+    // Delete photo from UploadThing
+    try {
+      const utapi = new UTApi();
+      await utapi.deleteFiles([existingProfile.profilePhotoKey]);
+    } catch (error) {
+      console.error('Failed to delete profile photo from storage:', error);
+      // Continue anyway - we'll remove from database
+    }
+
+    // Calculate new completeness score without photo
+    const completenessScore = calculateProfileCompleteness({
+      professionalBio: existingProfile.professionalBio,
+      yearsOfExperience: existingProfile.yearsOfExperience,
+      specializations: existingProfile.specializations,
+      education: existingProfile.education,
+      certifications: existingProfile.certifications,
+      languages: existingProfile.languages,
+      profilePhotoUrl: null,
+      officeAddress: existingProfile.officeAddress,
+    });
+
+    // Update profile to remove photo
+    const result = await ctx.db
+      .update(doctorProfiles)
+      .set({
+        profilePhotoUrl: null,
+        profilePhotoKey: null,
+        completenessScore,
+        updatedAt: new Date(),
+      })
+      .where(eq(doctorProfiles.id, existingProfile.id))
+      .returning();
+
+    const updatedProfile = result[0];
+
+    if (!updatedProfile) {
+      throw new TRPCError({
+        code: 'INTERNAL_SERVER_ERROR',
+        message: 'Failed to delete profile photo',
+      });
+    }
+
+    // Log the photo deletion
+    await auditService.log({
+      userId: ctx.user.id,
+      action: 'doctor_profile_photo_deleted',
+      resourceType: 'doctor_profile',
+      resourceId: updatedProfile.id,
+      metadata: { 
+        deletedPhotoKey: existingProfile.profilePhotoKey,
+        type: 'profile_photo' 
+      },
+    });
+
+    return updatedProfile;
+  }),
+
+  /**
+   * Publish profile (make visible to patients).
+   * Checks doctor verification status before publishing.
+   * Requirements: 3.1, 3.2
+   */
+  publishProfile: doctorProcedure.mutation(async ({ ctx }) => {
+    if (!ctx.doctor) {
+      throw new TRPCError({
+        code: 'NOT_FOUND',
+        message: 'Doctor profile not found.',
+      });
+    }
+
+    // Check if doctor can publish
+    if (!canPublishProfile(ctx.doctor)) {
+      throw new TRPCError({
+        code: 'FORBIDDEN',
+        message: 'Cannot publish profile. Doctor must be verified first.',
+      });
+    }
+
+    // Get existing profile
+    const existingProfile = await ctx.db.query.doctorProfiles.findFirst({
+      where: eq(doctorProfiles.doctorId, ctx.doctor.id),
+    });
+
+    let updatedProfile;
+
+    if (existingProfile) {
+      // Update existing profile
+      const result = await ctx.db
+        .update(doctorProfiles)
+        .set({
+          isPublished: true,
+          updatedAt: new Date(),
+        })
+        .where(eq(doctorProfiles.id, existingProfile.id))
+        .returning();
+
+      updatedProfile = result[0];
+    } else {
+      // Create new profile with published status
+      const result = await ctx.db
+        .insert(doctorProfiles)
+        .values({
+          doctorId: ctx.doctor.id,
+          isPublished: true,
+          completenessScore: 0,
+        })
+        .returning();
+
+      updatedProfile = result[0];
+    }
+
+    if (!updatedProfile) {
+      throw new TRPCError({
+        code: 'INTERNAL_SERVER_ERROR',
+        message: 'Failed to publish profile',
+      });
+    }
+
+    // Log the publication
+    await auditService.log({
+      userId: ctx.user.id,
+      action: 'doctor_profile_published',
+      resourceType: 'doctor_profile',
+      resourceId: updatedProfile.id,
+      metadata: { 
+        doctorId: ctx.doctor.id,
+        verificationStatus: ctx.doctor.verificationStatus,
+        completenessScore: updatedProfile.completenessScore,
+      },
+    });
+
+    return updatedProfile;
+  }),
+
+  /**
+   * Unpublish profile (hide from patients).
+   * Requirements: 3.1
+   */
+  unpublishProfile: doctorProcedure.mutation(async ({ ctx }) => {
+    if (!ctx.doctor) {
+      throw new TRPCError({
+        code: 'NOT_FOUND',
+        message: 'Doctor profile not found.',
+      });
+    }
+
+    // Get existing profile
+    const existingProfile = await ctx.db.query.doctorProfiles.findFirst({
+      where: eq(doctorProfiles.doctorId, ctx.doctor.id),
+    });
+
+    if (!existingProfile) {
+      throw new TRPCError({
+        code: 'NOT_FOUND',
+        message: 'Professional profile not found.',
+      });
+    }
+
+    // Update profile to unpublish
+    const result = await ctx.db
+      .update(doctorProfiles)
+      .set({
+        isPublished: false,
+        updatedAt: new Date(),
+      })
+      .where(eq(doctorProfiles.id, existingProfile.id))
+      .returning();
+
+    const updatedProfile = result[0];
+
+    if (!updatedProfile) {
+      throw new TRPCError({
+        code: 'INTERNAL_SERVER_ERROR',
+        message: 'Failed to unpublish profile',
+      });
+    }
+
+    // Log the unpublication
+    await auditService.log({
+      userId: ctx.user.id,
+      action: 'doctor_profile_unpublished',
+      resourceType: 'doctor_profile',
+      resourceId: updatedProfile.id,
+      metadata: { 
+        doctorId: ctx.doctor.id,
+        completenessScore: updatedProfile.completenessScore,
+      },
+    });
+
+    return updatedProfile;
+  }),
+
+  /**
+   * Get public profile by doctor ID.
+   * Checks visibility permissions before returning data.
+   * Requirements: 3.1, 3.2, 3.3, 3.5
+   */
+  getPublicProfile: publicProcedure
+    .input(z.object({ doctorId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      // Get doctor record
+      const doctor = await ctx.db.query.doctors.findFirst({
+        where: eq(doctors.id, input.doctorId),
+      });
+
+      if (!doctor) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Doctor not found',
+        });
+      }
+
+      // Get professional profile
+      const profile = await ctx.db.query.doctorProfiles.findFirst({
+        where: eq(doctorProfiles.doctorId, input.doctorId),
+      });
+
+      if (!profile) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Professional profile not found',
+        });
+      }
+
+      // Get user info
+      const user = await ctx.db.query.users.findFirst({
+        where: eq(users.id, doctor.userId),
+      });
+
+      if (!user) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'User not found',
+        });
+      }
+
+      // Check if viewer can see this profile
+      const viewer = ctx.userId ? await ctx.db.query.users.findFirst({
+        where: eq(users.id, ctx.userId),
+      }) : null;
+
+      const viewerData = viewer ? {
+        id: viewer.id,
+        primaryRole: viewer.primaryRole,
+      } : null;
+
+      if (!canViewProfile(
+        { ...profile, isPublished: profile.isPublished },
+        { 
+          id: doctor.id, 
+          userId: doctor.userId, 
+          verificationStatus: doctor.verificationStatus 
+        },
+        viewerData
+      )) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'This profile is not publicly visible',
+        });
+      }
+
+      // Return public profile data
+      return {
+        ...profile,
+        doctor: {
+          id: doctor.id,
+          slug: doctor.slug,
+          specialty: doctor.specialty,
+          clinicName: doctor.clinicName,
+          verificationStatus: doctor.verificationStatus,
+        },
+        user: {
+          firstName: user.firstName,
+          lastName: user.lastName,
+          imageUrl: user.imageUrl,
+        },
+      };
+    }),
+
+  /**
+   * Get profile completeness score and missing fields.
+   * Requirements: 5.1, 5.2
+   */
+  getProfileCompleteness: doctorProcedure.query(async ({ ctx }) => {
+    if (!ctx.doctor) {
+      throw new TRPCError({
+        code: 'NOT_FOUND',
+        message: 'Doctor profile not found.',
+      });
+    }
+
+    // Get professional profile
+    const profile = await ctx.db.query.doctorProfiles.findFirst({
+      where: eq(doctorProfiles.doctorId, ctx.doctor.id),
+    });
+
+    if (!profile) {
+      // No profile yet, return 0% completeness
+      return {
+        score: 0,
+        missingFields: [
+          'professionalBio',
+          'specializations',
+          'yearsOfExperience',
+          'education',
+          'certifications',
+          'languages',
+          'profilePhoto',
+          'officeAddress',
+        ],
+      };
+    }
+
+    // Calculate completeness
+    const score = calculateProfileCompleteness(profile);
+
+    // Determine missing fields
+    const missingFields: string[] = [];
+    
+    if (!profile.professionalBio || profile.professionalBio.length < 50) {
+      missingFields.push('professionalBio');
+    }
+    if (!profile.specializations || profile.specializations.length === 0) {
+      missingFields.push('specializations');
+    }
+    if (profile.yearsOfExperience === null || profile.yearsOfExperience === undefined) {
+      missingFields.push('yearsOfExperience');
+    }
+    if (!profile.education || profile.education.length === 0) {
+      missingFields.push('education');
+    }
+    if (!profile.certifications || profile.certifications.length === 0) {
+      missingFields.push('certifications');
+    }
+    if (!profile.languages || profile.languages.length === 0) {
+      missingFields.push('languages');
+    }
+    if (!profile.profilePhotoUrl) {
+      missingFields.push('profilePhoto');
+    }
+    if (!profile.officeAddress) {
+      missingFields.push('officeAddress');
+    }
+
+    return {
+      score,
+      missingFields,
+    };
+  }),
 });

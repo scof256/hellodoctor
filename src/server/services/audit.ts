@@ -32,6 +32,13 @@ export type AuditAction =
   | 'doctor_approved'
   | 'doctor_rejected'
   | 'doctor_verification_revoked'
+  // Doctor profile operations
+  | 'doctor_profile_created'
+  | 'doctor_profile_updated'
+  | 'doctor_profile_photo_uploaded'
+  | 'doctor_profile_photo_deleted'
+  | 'doctor_profile_published'
+  | 'doctor_profile_unpublished'
   // Patient operations
   | 'patient_created'
   | 'patient_updated'
@@ -82,6 +89,7 @@ export type AuditAction =
 export type AuditResourceType =
   | 'user'
   | 'doctor'
+  | 'doctor_profile'
   | 'patient'
   | 'connection'
   | 'appointment'

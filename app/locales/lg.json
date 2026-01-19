@@ -41,7 +41,10 @@
     "noDoctor": "Yungibwa omusawo okusobola okutandika",
     "nextSteps": "Bino bye weetaaga okukola oluvannyuma",
     "getStarted": "Yungibwa omusawo okutandika",
-    "connectInstructions": "Okuyungibwa omusawo:\n\n1. Buuza omusawo wo QR code oba link ey'okuyungibwa\n2. Scan QR code oba nyiga link\n3. Yingira oba tandika akawunti\n4. Ojja kuyungibwa mu bwangu!"
+    "connectInstructions": "Okuyungibwa omusawo:\n\n1. Buuza omusawo wo QR code oba link ey'okuyungibwa\n2. Scan QR code oba nyiga link\n3. Yingira oba tandika akawunti\n4. Ojja kuyungibwa mu bwangu!",
+    "scanQR": "Skana QR Code",
+    "scanQRSubtitle": "Yungibwa omusawo omupya",
+    "qrScanUnavailable": "Kamera teriwo. Buuza omusawo wo link yaabwe ey'okuyungibwa."
   },
   "intake": {
     "title": "Foomu y'Obujjanjabi",

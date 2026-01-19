@@ -28,6 +28,8 @@ vi.mock('@/app/hooks/useLocalization', () => ({
         'home.continueIntake': `Continue Medical Form (${params?.progress || 0}%)`,
         'home.bookAppointment': 'Book Appointment',
         'home.viewAppointment': 'Upcoming Appointment',
+        'home.scanQR': 'Scan QR Code',
+        'home.scanQRSubtitle': 'Connect with a new doctor',
         'tutorial.step1Description': 'Scan a QR code or use a doctor\'s link',
         'intake.startMessage': `Fill out your medical history for ${params?.name || 'your doctor'}`,
         'intake.continueMessage': 'Pick up where you left off',
@@ -134,7 +136,7 @@ describe('SimplifiedPatientHome Component', () => {
       ).toBeInTheDocument();
     });
 
-    it('should mark "Start Medical Form" card as primary (with pulse)', () => {
+    it('should mark "Start Medical Form" card as primary (with hover-pulse)', () => {
       const connections = [createMockConnection('not_started')];
 
       const { container } = render(
@@ -144,8 +146,8 @@ describe('SimplifiedPatientHome Component', () => {
       // Find the Start Medical Form button
       const startButton = screen.getByText('Start Medical Form').closest('button');
       
-      // Check if it has the pulse animation class
-      expect(startButton).toHaveClass('animate-pulse-glow');
+      // Check if it has the hover-pulse animation class
+      expect(startButton).toHaveClass('animate-pulse-glow-hover');
     });
   });
 
@@ -181,7 +183,7 @@ describe('SimplifiedPatientHome Component', () => {
       );
 
       const continueButton = screen.getByText(/Continue Medical Form \(50%\)/i).closest('button');
-      expect(continueButton).toHaveClass('animate-pulse-glow');
+      expect(continueButton).toHaveClass('animate-pulse-glow-hover');
     });
   });
 
@@ -213,7 +215,7 @@ describe('SimplifiedPatientHome Component', () => {
       );
 
       const bookButton = screen.getByText('Book Appointment').closest('button');
-      expect(bookButton).toHaveClass('animate-pulse-glow');
+      expect(bookButton).toHaveClass('animate-pulse-glow-hover');
     });
   });
 
@@ -255,7 +257,7 @@ describe('SimplifiedPatientHome Component', () => {
       );
 
       const appointmentButton = screen.getByText('Upcoming Appointment').closest('button');
-      expect(appointmentButton).toHaveClass('animate-pulse-glow');
+      expect(appointmentButton).toHaveClass('animate-pulse-glow-hover');
     });
   });
 
@@ -356,6 +358,180 @@ describe('SimplifiedPatientHome Component', () => {
       // Check for icon container with 64px dimensions
       const iconContainer = container.querySelector('div.w-16.h-16');
       expect(iconContainer).toBeInTheDocument();
+    });
+  });
+
+  describe('QR Scan Card - Requirements 1.1, 1.2, 2.1, 2.2, 2.3', () => {
+    it('should include QR scan card when patient has no connections', () => {
+      render(<SimplifiedPatientHome connections={[]} appointments={[]} />);
+
+      expect(screen.getByText('Scan QR Code')).toBeInTheDocument();
+      expect(screen.getByText('Connect with a new doctor')).toBeInTheDocument();
+    });
+
+    it('should include QR scan card when patient has connections', () => {
+      const connections = [createMockConnection('not_started')];
+
+      render(<SimplifiedPatientHome connections={connections} appointments={[]} />);
+
+      expect(screen.getByText('Scan QR Code')).toBeInTheDocument();
+    });
+
+    it('should include QR scan card when intake is in progress', () => {
+      const connections = [createMockConnection('in_progress', 50)];
+
+      render(<SimplifiedPatientHome connections={connections} appointments={[]} />);
+
+      expect(screen.getByText('Scan QR Code')).toBeInTheDocument();
+    });
+
+    it('should include QR scan card when intake is complete', () => {
+      const connections = [createMockConnection('ready', 100)];
+
+      render(<SimplifiedPatientHome connections={connections} appointments={[]} />);
+
+      expect(screen.getByText('Scan QR Code')).toBeInTheDocument();
+    });
+
+    it('should include QR scan card when appointment is booked', () => {
+      const connections = [createMockConnection('ready', 100)];
+      const appointments = [createMockAppointment()];
+
+      render(
+        <SimplifiedPatientHome connections={connections} appointments={appointments} />
+      );
+
+      expect(screen.getByText('Scan QR Code')).toBeInTheDocument();
+    });
+
+    it('should display QR scan card as first card before "Start Medical Form"', () => {
+      const connections = [createMockConnection('not_started')];
+
+      const { container } = render(
+        <SimplifiedPatientHome connections={connections} appointments={[]} />
+      );
+
+      const actionCards = container.querySelectorAll('button[class*="min-h-[120px]"]');
+      const firstCard = actionCards[0];
+      
+      // First card should contain QR scan text
+      expect(firstCard?.textContent).toContain('Scan QR Code');
+    });
+
+    it('should display QR scan card as first card before "Continue Medical Form"', () => {
+      const connections = [createMockConnection('in_progress', 50)];
+
+      const { container } = render(
+        <SimplifiedPatientHome connections={connections} appointments={[]} />
+      );
+
+      const actionCards = container.querySelectorAll('button[class*="min-h-[120px]"]');
+      const firstCard = actionCards[0];
+      
+      expect(firstCard?.textContent).toContain('Scan QR Code');
+    });
+
+    it('should display QR scan card as first card before "Book Appointment"', () => {
+      const connections = [createMockConnection('ready', 100)];
+
+      const { container } = render(
+        <SimplifiedPatientHome connections={connections} appointments={[]} />
+      );
+
+      const actionCards = container.querySelectorAll('button[class*="min-h-[120px]"]');
+      const firstCard = actionCards[0];
+      
+      expect(firstCard?.textContent).toContain('Scan QR Code');
+    });
+
+    it('should display QR scan card as first card before appointment details', () => {
+      const connections = [createMockConnection('ready', 100)];
+      const appointments = [createMockAppointment()];
+
+      const { container } = render(
+        <SimplifiedPatientHome connections={connections} appointments={appointments} />
+      );
+
+      const actionCards = container.querySelectorAll('button[class*="min-h-[120px]"]');
+      const firstCard = actionCards[0];
+      
+      expect(firstCard?.textContent).toContain('Scan QR Code');
+    });
+
+    it('should navigate to /patient/scan-qr when QR scan card is tapped', () => {
+      const connections = [createMockConnection('not_started')];
+
+      render(<SimplifiedPatientHome connections={connections} appointments={[]} />);
+
+      const qrScanButton = screen.getByText('Scan QR Code').closest('button');
+      qrScanButton?.click();
+
+      expect(mockPush).toHaveBeenCalledWith('/patient/scan-qr');
+    });
+
+    it('should count QR scan card toward the 3-card maximum', () => {
+      const connections = [
+        createMockConnection('ready', 100),
+        {
+          ...createMockConnection('in_progress', 50),
+          id: 'conn-2',
+        },
+      ];
+
+      const { container } = render(
+        <SimplifiedPatientHome connections={connections} appointments={[]} />
+      );
+
+      const actionCards = container.querySelectorAll('button[class*="min-h-[120px]"]');
+      
+      // Should have exactly 3 cards: QR scan, primary action, secondary action
+      expect(actionCards.length).toBe(3);
+      
+      // First card should be QR scan
+      expect(actionCards[0]?.textContent).toContain('Scan QR Code');
+    });
+
+    it('should mark QR scan card as non-primary (no pulse animation)', () => {
+      const connections = [createMockConnection('not_started')];
+
+      const { container } = render(
+        <SimplifiedPatientHome connections={connections} appointments={[]} />
+      );
+
+      const qrScanButton = screen.getByText('Scan QR Code').closest('button');
+      
+      // QR scan card should NOT have pulse animation
+      expect(qrScanButton).not.toHaveClass('animate-pulse-glow');
+    });
+
+    it('should display QR scan card with multiple connections', () => {
+      const connections = [
+        createMockConnection('ready', 100),
+        {
+          ...createMockConnection('not_started'),
+          id: 'conn-2',
+          doctor: {
+            id: 'doc-2',
+            firstName: 'Jane',
+            lastName: 'Doe',
+            imageUrl: null,
+            specialty: 'Cardiology',
+            clinicName: 'Heart Clinic',
+          },
+        },
+      ];
+
+      render(<SimplifiedPatientHome connections={connections} appointments={[]} />);
+
+      // QR scan card should still be present
+      expect(screen.getByText('Scan QR Code')).toBeInTheDocument();
+      
+      // And should be first
+      const { container } = render(
+        <SimplifiedPatientHome connections={connections} appointments={[]} />
+      );
+      const actionCards = container.querySelectorAll('button[class*="min-h-[120px]"]');
+      expect(actionCards[0]?.textContent).toContain('Scan QR Code');
     });
   });
 });

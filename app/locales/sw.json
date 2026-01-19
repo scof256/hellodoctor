@@ -41,7 +41,10 @@
     "noDoctor": "Unganisha na daktari ili kuanza",
     "nextSteps": "Hivi ndivyo unavyohitaji kufanya ifuatayo",
     "getStarted": "Unganisha na daktari ili kuanza",
-    "connectInstructions": "Ili kuunganisha na daktari:\n\n1. Uliza daktari wako msimbo wa QR au kiungo cha kuunganisha\n2. Scan msimbo wa QR au bonyeza kiungo\n3. Ingia au unda akaunti\n4. Utaunganishwa moja kwa moja!"
+    "connectInstructions": "Ili kuunganisha na daktari:\n\n1. Uliza daktari wako msimbo wa QR au kiungo cha kuunganisha\n2. Scan msimbo wa QR au bonyeza kiungo\n3. Ingia au unda akaunti\n4. Utaunganishwa moja kwa moja!",
+    "scanQR": "Scan Msimbo wa QR",
+    "scanQRSubtitle": "Unganisha na daktari mpya",
+    "qrScanUnavailable": "Kamera haipatikani. Tafadhali uliza daktari wako kiungo chao cha kuunganisha."
   },
   "intake": {
     "title": "Fomu ya Afya",

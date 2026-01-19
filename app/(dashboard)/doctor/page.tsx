@@ -11,6 +11,8 @@ import {
   AlertCircle,
   QrCode,
   TrendingUp,
+  UserCircle,
+  Edit3,
 } from 'lucide-react';
 import type { ConnectionSummary, AppointmentSummary } from '@/types/dashboard';
 
@@ -331,6 +333,52 @@ function QRCodeQuickAccess() {
 }
 
 // ============================================================================
+// PROFILE COMPLETENESS BANNER COMPONENT
+// Requirements: 8.2 - Incomplete profile reminder
+// ============================================================================
+
+function ProfileCompletenessBanner() {
+  const { data: completenessData, isLoading } = api.doctor.getProfileCompleteness.useQuery();
+
+  // Don't show banner if loading or profile is complete
+  if (isLoading || !completenessData || completenessData.score >= 100) {
+    return null;
+  }
+
+  const missingFieldsCount = completenessData.missingFields?.length ?? 0;
+
+  return (
+    <div className="bg-gradient-to-r from-medical-50 to-blue-50 border border-medical-200 rounded-xl p-4 shadow-sm">
+      <div className="flex items-start gap-4">
+        <div className="flex-shrink-0 p-2 bg-white rounded-lg">
+          <UserCircle className="w-6 h-6 text-medical-600" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <h3 className="font-semibold text-slate-800">Complete Your Professional Profile</h3>
+            <span className="px-2 py-0.5 bg-medical-100 text-medical-700 text-xs font-medium rounded-full">
+              {completenessData.score}% Complete
+            </span>
+          </div>
+          <p className="text-sm text-slate-600 mb-3">
+            {missingFieldsCount > 0 
+              ? `Add ${missingFieldsCount} more field${missingFieldsCount > 1 ? 's' : ''} to help patients learn about your qualifications and expertise.`
+              : 'A complete profile helps patients make informed decisions about their care.'}
+          </p>
+          <Link
+            href="/doctor/profile"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-medical-600 text-white rounded-lg text-sm font-medium hover:bg-medical-700 transition-colors"
+          >
+            <Edit3 className="w-4 h-4" />
+            Edit Profile
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
 // MAIN DASHBOARD COMPONENT
 // ============================================================================
 
@@ -383,15 +431,28 @@ export default function DoctorOverviewPage() {
             </>
           )}
         </div>
-        {!profileLoading && doctorProfile?.verificationStatus !== 'verified' && (
-          <div className="px-4 py-2 bg-yellow-50 border border-yellow-200 rounded-lg self-start sm:self-auto">
-            <p className="text-sm text-yellow-700 flex items-center gap-2">
-              <AlertCircle className="w-4 h-4" />
-              Verification pending
-            </p>
-          </div>
-        )}
+        <div className="flex items-center gap-3">
+          {/* Edit Profile Quick Link - Requirements: 8.1, 8.4 */}
+          <Link
+            href="/doctor/profile"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors"
+          >
+            <UserCircle className="w-4 h-4" />
+            Edit Profile
+          </Link>
+          {!profileLoading && doctorProfile?.verificationStatus !== 'verified' && (
+            <div className="px-4 py-2 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <p className="text-sm text-yellow-700 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4" />
+                Verification pending
+              </p>
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* Profile Completeness Banner - Requirements: 8.2 */}
+      <ProfileCompletenessBanner />
 
       {/* Stats Cards - Progressive loading with skeletons (Requirements: 3.1, 3.2) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

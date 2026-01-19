@@ -71,6 +71,13 @@
       "when": 1768490000000,
       "tag": "0009_zoom-to-stream-migration",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1768580000000,
+      "tag": "0010_doctor-professional-profiles",
+      "breakpoints": true
     }
   ]
 }

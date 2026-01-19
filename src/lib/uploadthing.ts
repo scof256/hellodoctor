@@ -2,7 +2,7 @@ import { createUploadthing, type FileRouter } from "uploadthing/next";
 import { UploadThingError } from "uploadthing/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/server/db";
-import { users, patients, intakeSessions, connections } from "@/server/db/schema";
+import { users, patients, intakeSessions, connections, doctors } from "@/server/db/schema";
 import { eq, and } from "drizzle-orm";
 
 const f = createUploadthing();
@@ -158,6 +158,59 @@ export const ourFileRouter = {
       return {
         uploadedBy: metadata.userId,
         url: file.ufsUrl,
+        name: file.name,
+        size: file.size,
+        type: file.type,
+      };
+    }),
+
+  /**
+   * Doctor profile photo uploader
+   * Allows doctors to upload professional profile photos
+   * Requirements: 4.1, 4.2, 4.3, 4.4, 4.5
+   */
+  doctorProfilePhotoUploader: f({
+    image: {
+      maxFileSize: "5MB",
+      maxFileCount: 1,
+    },
+  })
+    .middleware(async () => {
+      // Authenticate user via Clerk
+      const { userId } = await auth();
+      if (!userId) {
+        throw new UploadThingError("Unauthorized");
+      }
+
+      // Get user from database
+      const user = await db.query.users.findFirst({
+        where: eq(users.clerkId, userId),
+      });
+
+      if (!user) {
+        throw new UploadThingError("User not found");
+      }
+
+      // Verify user is a doctor
+      const doctor = await db.query.doctors.findFirst({
+        where: eq(doctors.userId, user.id),
+      });
+
+      if (!doctor) {
+        throw new UploadThingError("Only doctors can upload profile photos");
+      }
+
+      return { userId: user.id, doctorId: doctor.id };
+    })
+    .onUploadComplete(async ({ metadata, file }) => {
+      console.log("Doctor profile photo upload complete for doctor:", metadata.doctorId);
+      console.log("File URL:", file.ufsUrl);
+
+      return {
+        uploadedBy: metadata.userId,
+        doctorId: metadata.doctorId,
+        url: file.ufsUrl,
+        key: file.key,
         name: file.name,
         size: file.size,
         type: file.type,

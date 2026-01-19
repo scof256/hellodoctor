@@ -41,7 +41,10 @@
     "noDoctor": "Connect to a doctor to get started",
     "nextSteps": "Here's what you need to do next",
     "getStarted": "Connect with a doctor to get started",
-    "connectInstructions": "To connect with a doctor:\n\n1. Ask your doctor for their QR code or connection link\n2. Scan the QR code or click the link\n3. Sign in or create an account\n4. You will be automatically connected!"
+    "connectInstructions": "To connect with a doctor:\n\n1. Ask your doctor for their QR code or connection link\n2. Scan the QR code or click the link\n3. Sign in or create an account\n4. You will be automatically connected!",
+    "scanQR": "Scan QR Code",
+    "scanQRSubtitle": "Connect with a new doctor",
+    "qrScanUnavailable": "Camera not available. Please ask your doctor for their connection link."
   },
   "intake": {
     "title": "Medical Form",

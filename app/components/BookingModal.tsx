@@ -3,12 +3,33 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Calendar, Clock, CheckCircle, ChevronLeft, ChevronRight, MapPin } from 'lucide-react';
 import { api } from '@/trpc/react';
+import { DoctorProfileSummary } from './DoctorProfileSummary';
 
 // Import skeleton components for loading states
 const TimeSlotSkeleton = () => (
   <div className="p-3 border border-slate-200 rounded-lg animate-pulse">
     <div className="h-5 bg-slate-200 rounded w-24 mb-1"></div>
     <div className="h-4 bg-slate-200 rounded w-16"></div>
+  </div>
+);
+
+const ProfileSummarySkeleton = () => (
+  <div className="bg-white rounded-xl border-2 border-slate-200 p-4 mb-4 animate-pulse">
+    <div className="flex items-start gap-4 mb-4">
+      <div className="w-16 h-16 rounded-full bg-slate-200"></div>
+      <div className="flex-1">
+        <div className="h-5 bg-slate-200 rounded w-32 mb-2"></div>
+        <div className="h-4 bg-slate-200 rounded w-24"></div>
+      </div>
+    </div>
+    <div className="flex gap-2 mb-3">
+      <div className="h-6 bg-slate-200 rounded-full w-20"></div>
+      <div className="h-6 bg-slate-200 rounded-full w-24"></div>
+    </div>
+    <div className="flex justify-between pt-3 border-t border-slate-200">
+      <div className="h-4 bg-slate-200 rounded w-20"></div>
+      <div className="h-4 bg-slate-200 rounded w-24"></div>
+    </div>
   </div>
 );
 
@@ -154,6 +175,15 @@ const BookingModal: React.FC<BookingModalProps> = ({
     }
   );
 
+  // Fetch doctor's public profile for display
+  const { data: doctorProfile, isLoading: profileLoading } = api.doctor.getPublicProfile.useQuery(
+    { doctorId },
+    {
+      enabled: isOpen && !!doctorId,
+      refetchOnWindowFocus: false,
+    }
+  );
+
   const availableSlots = (availableSlotsData?.slots ?? []) as Array<{
     startTime: string;
     endTime: string;
@@ -213,6 +243,21 @@ const BookingModal: React.FC<BookingModalProps> = ({
                 <p className="text-sm text-slate-500">Choose a date and time</p>
               </div>
             </div>
+
+            {/* Doctor Profile Summary */}
+            {profileLoading ? (
+              <ProfileSummarySkeleton />
+            ) : doctorProfile ? (
+              <DoctorProfileSummary
+                doctorId={doctorId}
+                name={doctorProfile.name}
+                profilePhotoUrl={doctorProfile.profilePhotoUrl}
+                specializations={doctorProfile.specializations}
+                yearsOfExperience={doctorProfile.yearsOfExperience}
+                consultationFee={doctorProfile.consultationFee}
+                currency="UGX"
+              />
+            ) : null}
 
             <div className="flex items-center gap-2 mb-4">
               {([
