@@ -20,6 +20,13 @@ const nextConfig = {
   
   // Optimize production builds
   productionBrowserSourceMaps: false,
+  
+  // Increase body size limit for audio transcription
+  experimental: {
+    serverActions: {
+      bodySizeLimit: '30mb',
+    },
+  },
 };
 
 export default withBundleAnalyzer(nextConfig);

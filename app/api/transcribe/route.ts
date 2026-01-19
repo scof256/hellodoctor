@@ -6,6 +6,17 @@ import { db } from '@/server/db';
 import { appointments, connections, doctors, userRoles, users } from '@/server/db/schema';
 
 export const runtime = 'nodejs';
+export const maxDuration = 60; // Allow up to 60 seconds for transcription
+export const dynamic = 'force-dynamic';
+
+// Increase body size limit for audio uploads
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '30mb',
+    },
+  },
+};
 
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
 
