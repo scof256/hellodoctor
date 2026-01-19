@@ -1,22 +1,52 @@
 # Transcription Fix Summary
 
-## Issues Identified
+## Issues Identified and Fixed
 
-### 1. Audio Transcription Failing (413 Payload Too Large & FormData Parse Error)
+### 1. Audio Transcription Failing - FIXED ✅
 **Errors:** 
-- `/api/transcribe:1 Failed to load resource: the server responded with a status of 413 ()`
-- `Failed to parse body as FormData`
-- `500 Internal Server Error`
+- `TypeError: fetch failed` when calling Gemini API
+- `/api/transcribe:1 Failed to load resource: the server responded with a status of 500 ()`
+- Previous: `413 Payload Too Large` and `Failed to parse body as FormData`
 
-**Root Cause:** 
-- Next.js has a default 10MB body size limit for API routes in App Router
-- Audio files being sent for transcription can be up to 25MB
-- The scribe page sends audio chunks every 60 seconds, which can exceed the default limit
-- **Previous incorrect fix**: Used `config.api.bodyParser` which only works in Pages Router, not App Router
-- This caused FormData parsing to fail with "expected boundary after body" error
+**Root Causes:** 
+1. **Incorrect API call format for Google GenAI SDK** (Primary issue causing fetch failure)
+   - The `contents` parameter was structured incorrectly
+   - Used `contents: { parts: [...] }` instead of `contents: [...]`
+   - According to official Gemini documentation, inline audio should use array format
 
-**Fix Applied:**
-1. Updated `next.config.js` to use the correct App Router configuration:
+2. **Next.js body size limit** (Secondary issue, already fixed)
+   - Next.js has a default 10MB body size limit for API routes in App Router
+   - Audio files being sent for transcription can be up to 25MB
+   - The scribe page sends audio chunks every 60 seconds, which can exceed the default limit
+
+**Fixes Applied:**
+
+1. **Corrected Gemini API call format in `app/api/transcribe/route.ts`:**
+   ```javascript
+   // BEFORE (INCORRECT):
+   const response = await ai.models.generateContent({
+     model,
+     config: { systemInstruction, temperature: 0.1 },
+     contents: {
+       parts: [
+         { inlineData: { mimeType, data: base64Audio } },
+         { text: 'Transcribe this audio.' },
+       ],
+     },
+   });
+
+   // AFTER (CORRECT):
+   const response = await ai.models.generateContent({
+     model,
+     config: { systemInstruction, temperature: 0.1 },
+     contents: [
+       { text: 'Transcribe this audio.' },
+       { inlineData: { mimeType, data: base64Audio } },
+     ],
+   });
+   ```
+
+2. **Updated `next.config.js` for body size limit:**
    ```javascript
    // For API routes in App Router
    proxyClientMaxBodySize: '30mb',
@@ -29,15 +59,9 @@
    }
    ```
 
-2. Removed incorrect `config` export from `app/api/transcribe/route.ts`:
+3. **Removed incorrect Pages Router config from `app/api/transcribe/route.ts`:**
    - The `config.api.bodyParser` pattern is ONLY for Pages Router
    - App Router uses global `proxyClientMaxBodySize` in next.config.js
-   - Route already has proper segment config: `maxDuration`, `dynamic`, `runtime`
-
-**CRITICAL: Server Restart Required**
-- The `proxyClientMaxBodySize` setting requires a **full server restart** to take effect
-- Stop your development server (Ctrl+C) and restart it with `npm run dev`
-- The setting will NOT work with hot reload - you must restart the server
 
 **CRITICAL: Server Restart Required**
 - The `proxyClientMaxBodySize` setting requires a **full server restart** to take effect

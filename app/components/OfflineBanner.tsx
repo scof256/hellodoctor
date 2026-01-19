@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { useNetworkStatus } from '../hooks/useNetworkStatus';
 
 /**
@@ -11,6 +12,16 @@ import { useNetworkStatus } from '../hooks/useNetworkStatus';
  */
 export function OfflineBanner() {
   const { isOnline, wasOffline } = useNetworkStatus();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Don't render anything until mounted to avoid hydration mismatch
+  if (!mounted) {
+    return null;
+  }
 
   // Show syncing message briefly when coming back online
   if (wasOffline && isOnline) {

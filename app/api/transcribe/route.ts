@@ -221,19 +221,15 @@ export async function POST(request: Request) {
         systemInstruction: TRANSCRIPTION_SYSTEM_INSTRUCTION,
         temperature: 0.1,
       },
-      contents: {
-        parts: [
-          {
-            inlineData: {
-              mimeType,
-              data: base64Audio,
-            },
+      contents: [
+        { text: 'Transcribe this audio.' },
+        {
+          inlineData: {
+            mimeType,
+            data: base64Audio,
           },
-          {
-            text: 'Transcribe this audio.',
-          },
-        ],
-      },
+        },
+      ],
     });
 
     const transcript = response.text || '';
