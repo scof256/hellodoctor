@@ -2,17 +2,27 @@
 
 import { useAuth } from '@clerk/nextjs';
 import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 export function LandingPageRedirect() {
   const { isSignedIn, isLoaded } = useAuth();
   const router = useRouter();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (isLoaded && isSignedIn) {
       router.push('/patient');
     }
   }, [isLoaded, isSignedIn, router]);
+
+  // Don't render anything until mounted to avoid hydration mismatch
+  if (!mounted) {
+    return null;
+  }
 
   if (!isLoaded) {
     return (
