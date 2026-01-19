@@ -29,7 +29,7 @@ old.md
 .env*.local
 
 # Build artifacts
-.next
+# Note: .next is needed during Vercel build process, only ignore output
 out
 dist
 *.tsbuildinfo
