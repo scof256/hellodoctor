@@ -12,6 +12,7 @@ import { BottomNav } from '@/app/components/BottomNav';
 import { BackButton, useShowBackButton } from '@/app/components/BackButton';
 import { useMode } from '@/app/contexts/ModeContext';
 import { getLogoutRedirectUrl } from '@/app/lib/auth-utils';
+import { RoleGuard } from './RoleGuard';
 import {
   Home,
   Calendar,
