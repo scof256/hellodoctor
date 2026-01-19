@@ -1,11 +1,5 @@
-'use client';
-
 import Link from 'next/link';
-import { useAuth } from '@clerk/nextjs';
-import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
 import { 
-  Stethoscope, 
   Users, 
   Calendar, 
   MessageSquare, 
@@ -14,36 +8,15 @@ import {
   Clock, 
   FileText,
   ArrowRight,
-  CheckCircle2,
   Sparkles
 } from 'lucide-react';
+import { LandingPageRedirect } from '@/app/components/LandingPageClient';
 
 export default function LandingPage() {
-  const { isSignedIn, isLoaded } = useAuth();
-  const router = useRouter();
-
-  useEffect(() => {
-    if (isLoaded && isSignedIn) {
-      router.push('/patient');
-    }
-  }, [isLoaded, isSignedIn, router]);
-
-  if (!isLoaded) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="text-center">
-          <div className="w-16 h-16 rounded-full bg-medical-100 animate-pulse mx-auto mb-4"></div>
-          <div className="h-4 w-32 bg-slate-200 rounded animate-pulse mx-auto"></div>
-        </div>
-      </div>
-    );
-  }
-
-  if (isSignedIn) {
-    return null;
-  }
-
   return (
+    <>
+      <LandingPageRedirect />
+      <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
       {/* Navigation */}
       <nav className="fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-200">
