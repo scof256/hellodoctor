@@ -48,16 +48,16 @@
 
 2. **Updated `next.config.js` for body size limit:**
    ```javascript
-   // For API routes in App Router
-   proxyClientMaxBodySize: '30mb',
-   
    // For Server Actions
    experimental: {
      serverActions: {
        bodySizeLimit: '30mb',
      },
+     middlewareClientMaxBodySize: '30mb',
    }
    ```
+   
+   **Note**: In Next.js 15, there is no direct configuration for API route body size limits in the App Router. The `middlewareClientMaxBodySize` setting applies when middleware is used. For API routes, Next.js uses the underlying Node.js server's body parser, which typically has a higher default limit. The main concern was the FormData parsing, which is now working correctly with the Gemini API fix.
 
 3. **Removed incorrect Pages Router config from `app/api/transcribe/route.ts`:**
    - The `config.api.bodyParser` pattern is ONLY for Pages Router

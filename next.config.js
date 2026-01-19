@@ -21,14 +21,12 @@ const nextConfig = {
   // Optimize production builds
   productionBrowserSourceMaps: false,
   
-  // Increase body size limit for audio transcription (API routes)
-  proxyClientMaxBodySize: '30mb',
-  
-  // Increase body size limit for Server Actions
+  // Increase body size limit for Server Actions and middleware
   experimental: {
     serverActions: {
       bodySizeLimit: '30mb',
     },
+    middlewareClientMaxBodySize: '30mb',
   },
 };
 
