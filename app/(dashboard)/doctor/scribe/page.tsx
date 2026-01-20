@@ -425,6 +425,50 @@ function DoctorScribePageContent() {
     hasInitializedFromServerRef.current = true;
   }, [isRecording, stopRecording]);
 
+  const handleResetTranscription = useCallback(async () => {
+    if (!appointmentId) {
+      setError('Missing appointmentId. Open scribe from an appointment first.');
+      return;
+    }
+
+    if (!scribeIsActive) {
+      setError('Scribe must be active to reset transcription.');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      'Are you sure you want to reset the transcription? This will permanently delete all transcribed text from the database. This action cannot be undone.'
+    );
+
+    if (!confirmed) return;
+
+    try {
+      const resp = await fetch('/api/transcribe/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ appointmentId }),
+      });
+
+      const data = (await resp.json()) as { success?: boolean; error?: string; details?: string };
+      if (!resp.ok) {
+        const msg = data.details || data.error || 'Failed to reset transcription';
+        setError(msg);
+        return;
+      }
+
+      // Clear local state after successful reset
+      handleClear();
+      
+      // Invalidate the query to refresh from server
+      if (appointmentId) {
+        await utils.appointment.getScribeData.invalidate({ appointmentId });
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Failed to reset transcription';
+      setError(msg);
+    }
+  }, [appointmentId, handleClear, scribeIsActive, utils.appointment.getScribeData]);
+
   const statusLabel = isRecording ? 'RECORDING' : isProcessingFile ? 'PROCESSING' : 'IDLE';
 
   return (
@@ -457,9 +501,20 @@ function DoctorScribePageContent() {
             onClick={handleClear}
             className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors"
             disabled={isProcessingFile}
+            title="Clear local transcript (does not affect database)"
           >
             <Trash2 className="w-4 h-4" />
             Clear
+          </button>
+
+          <button
+            onClick={handleResetTranscription}
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-red-100 text-red-700 hover:bg-red-200 transition-colors disabled:opacity-50"
+            disabled={isProcessingFile || !appointmentId || !scribeIsActive}
+            title="Reset transcription in database (permanent)"
+          >
+            <Trash2 className="w-4 h-4" />
+            Reset DB
           </button>
         </div>
       </div>
