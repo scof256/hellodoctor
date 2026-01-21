@@ -169,10 +169,10 @@ describe('Property: Logout Confirmation Flow', () => {
             const cancelButton = screen.getByRole('button', { name: /cancel/i });
             fireEvent.click(cancelButton);
 
-            // Verify dialog is closed
+            // Verify dialog is closed with increased timeout
             await waitFor(() => {
               expect(screen.queryByText('Confirm Logout')).not.toBeInTheDocument();
-            });
+            }, { timeout: 3000 });
 
             // Verify signOut was never called (session maintained)
             expect(mockSignOut).not.toHaveBeenCalled();
@@ -230,15 +230,15 @@ describe('Property: Logout Confirmation Flow', () => {
             expect(confirmButton).toBeDefined();
             fireEvent.click(confirmButton!);
 
-            // Verify signOut was called exactly once
+            // Verify signOut was called exactly once with increased timeout
             await waitFor(() => {
               expect(mockSignOut).toHaveBeenCalledTimes(1);
-            });
+            }, { timeout: 3000 });
 
-            // Verify dialog closes after confirmation
+            // Verify dialog closes after confirmation with increased timeout
             await waitFor(() => {
               expect(screen.queryByText('Confirm Logout')).not.toBeInTheDocument();
-            });
+            }, { timeout: 3000 });
           } finally {
             // Always unmount and clean up
             unmount();

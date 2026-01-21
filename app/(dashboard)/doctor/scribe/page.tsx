@@ -3,18 +3,19 @@
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import ReactMarkdown from 'react-markdown';
-import { Mic, StopCircle, Upload, Sparkles, Copy, Trash2 } from 'lucide-react';
+import { Mic, StopCircle, Upload, Sparkles, Copy, Trash2, AlertCircle } from 'lucide-react';
 import { api } from '@/trpc/react';
-
-type TranscriptSegment = {
-  id: string;
-  timestamp: number;
-  text: string;
-  isPending: boolean;
-  error?: string;
-};
-
-type AnalysisType = 'summary' | 'soap' | 'action_items' | 'risk_assessment';
+import { SegmentControls, type TranscriptSegment } from '@/app/components/SegmentControls';
+import { AudioPlaybackManager } from '@/app/lib/audio-playback-manager';
+import { 
+  compressAudio, 
+  shouldWarnAboutSize, 
+  exceedsApiLimit, 
+  formatFileSize 
+} from '@/app/lib/audio-compression';
+import { useRealTimeAnalysis } from '@/app/hooks/useRealTimeAnalysis';
+import { type AnalysisType, type SBARContent } from '@/app/lib/sbar-extractor';
+import { SBARDisplay } from '@/app/components/SBARDisplay';
 
 type LiveInsightItem = {
   id: string;
@@ -74,11 +75,22 @@ function DoctorScribePageContent() {
   const [segments, setSegments] = useState<TranscriptSegment[]>([]);
   const [duration, setDuration] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [sizeWarning, setSizeWarning] = useState<string | null>(null);
+
+  // Audio playback state
+  const [playingSegmentId, setPlayingSegmentId] = useState<string | null>(null);
+  const [playbackProgress, setPlaybackProgress] = useState<Record<string, number>>({});
+  const audioManagerRef = useRef<AudioPlaybackManager | null>(null);
 
   const [activeAnalysisType, setActiveAnalysisType] = useState<AnalysisType | null>(null);
   const [analysisContent, setAnalysisContent] = useState<string>('');
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+
+  // SBAR content state for real-time analysis
+  const [sbarContent, setSbarContent] = useState<SBARContent | null>(null);
+  const [lastAnalysisTimestamp, setLastAnalysisTimestamp] = useState<number | null>(null);
+  const [isAutoAnalyzing, setIsAutoAnalyzing] = useState(false);
 
   const [liveInsights, setLiveInsights] = useState<LiveInsightItem[]>([]);
   const [isGeneratingInsights, setIsGeneratingInsights] = useState(false);
@@ -117,12 +129,76 @@ function DoctorScribePageContent() {
 
   const scribeIsActive = scribeData?.scribeIsActive ?? false;
 
+  // Initialize audio playback manager
+  useEffect(() => {
+    audioManagerRef.current = new AudioPlaybackManager();
+
+    const unsubscribeProgress = audioManagerRef.current.onProgressUpdate((progress) => {
+      const state = audioManagerRef.current?.getState();
+      if (state?.segmentId) {
+        setPlaybackProgress((prev) => ({ ...prev, [state.segmentId!]: progress }));
+      }
+    });
+
+    const unsubscribeEnd = audioManagerRef.current.onPlaybackEnd(() => {
+      setPlayingSegmentId(null);
+    });
+
+    return () => {
+      unsubscribeProgress();
+      unsubscribeEnd();
+      audioManagerRef.current?.destroy();
+      
+      // Revoke all object URLs on unmount
+      segments.forEach((segment) => {
+        if (segment.audioUrl) {
+          URL.revokeObjectURL(segment.audioUrl);
+        }
+      });
+    };
+  }, []);
+
+  // Cleanup object URLs when segments are deleted
+  useEffect(() => {
+    return () => {
+      segments.forEach((segment) => {
+        if (segment.audioUrl && segment.isDeleted) {
+          URL.revokeObjectURL(segment.audioUrl);
+        }
+      });
+    };
+  }, [segments]);
+
   const fullTranscript = useMemo(() => {
     return segments
-      .filter((s) => !s.isPending && !s.error)
+      .filter((s) => !s.isPending && !s.error && !s.isDeleted)
       .map((s) => s.text)
       .join('\n\n');
   }, [segments]);
+
+  // Integrate real-time analysis hook
+  const { triggerManualAnalysis, cancelPendingAnalysis } = useRealTimeAnalysis({
+    fullTranscript,
+    activeAnalysisType,
+    appointmentId,
+    scribeIsActive,
+    onAnalysisStart: () => {
+      setIsAutoAnalyzing(true);
+      setAnalysisLoading(true);
+      setAnalysisError(null);
+    },
+    onAnalysisComplete: (content: SBARContent) => {
+      setSbarContent(content);
+      setLastAnalysisTimestamp(content.generatedAt);
+      setIsAutoAnalyzing(false);
+      setAnalysisLoading(false);
+    },
+    onAnalysisError: (error: string) => {
+      setAnalysisError(error);
+      setIsAutoAnalyzing(false);
+      setAnalysisLoading(false);
+    },
+  });
 
   useEffect(() => {
     if (!appointmentId) return;
@@ -142,6 +218,7 @@ function DoctorScribePageContent() {
         timestamp: Date.now(),
         text: stored,
         isPending: false,
+        isDeleted: false,
       },
     ]);
   }, [appointmentId, isProcessingFile, isRecording, scribeData]);
@@ -216,13 +293,46 @@ function DoctorScribePageContent() {
     async (audioBlob: Blob) => {
       const segmentId = Date.now().toString();
 
+      // Compress audio before storing
+      let compressedBlob = audioBlob;
+      try {
+        const compressed = await compressAudio(audioBlob, {
+          bitrate: 20000,
+          sampleRate: 16000,
+          channelCount: 1,
+        });
+        compressedBlob = compressed.blob;
+        
+        // Check size and show warnings
+        if (shouldWarnAboutSize(compressed.size)) {
+          setSizeWarning(`Audio chunk is ${formatFileSize(compressed.size)}. Processing may be slower.`);
+        }
+        if (exceedsApiLimit(compressed.size)) {
+          setError(`Audio chunk exceeds 25MB limit (${formatFileSize(compressed.size)}). Cannot transcribe.`);
+          return;
+        }
+      } catch (e) {
+        console.warn('Compression failed, using original audio:', e);
+      }
+
+      // Create object URL for playback
+      const audioUrl = URL.createObjectURL(compressedBlob);
+
       setSegments((prev) => [
         ...prev,
-        { id: segmentId, timestamp: Date.now(), text: '', isPending: true },
+        { 
+          id: segmentId, 
+          timestamp: Date.now(), 
+          text: '', 
+          isPending: true,
+          isDeleted: false,
+          audioBlob: compressedBlob,
+          audioUrl,
+        },
       ]);
 
       try {
-        const text = await transcribeBlob(audioBlob);
+        const text = await transcribeBlob(compressedBlob);
         setSegments((prev) =>
           prev.map((s) => (s.id === segmentId ? { ...s, text, isPending: false } : s)),
         );
@@ -253,6 +363,12 @@ function DoctorScribePageContent() {
 
     window.setTimeout(() => {
       flushCurrentBuffer();
+      
+      // Trigger final analysis after ensuring last segment is processed
+      // Only trigger if activeAnalysisType is set
+      if (activeAnalysisType && appointmentId && scribeIsActive) {
+        triggerManualAnalysis();
+      }
     }, 500);
 
     setIsRecording(false);
@@ -261,20 +377,25 @@ function DoctorScribePageContent() {
     if (processingIntervalRef.current) window.clearInterval(processingIntervalRef.current);
     timerIntervalRef.current = null;
     processingIntervalRef.current = null;
-  }, [flushCurrentBuffer, isRecording]);
+  }, [flushCurrentBuffer, isRecording, activeAnalysisType, appointmentId, scribeIsActive, triggerManualAnalysis]);
 
   const startRecording = useCallback(async () => {
     setError(null);
     setAnalysisError(null);
+    setSizeWarning(null);
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
+      // Use optimal codec and settings for speech compression
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
         ? 'audio/webm;codecs=opus'
         : undefined;
 
-      const mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType,
+        audioBitsPerSecond: 20000, // 20 kbps - optimized for speech
+      });
 
       mediaRecorderRef.current = mediaRecorder;
       chunksRef.current = [];
@@ -311,6 +432,7 @@ function DoctorScribePageContent() {
 
       setError(null);
       setAnalysisError(null);
+      setSizeWarning(null);
       setIsProcessingFile(true);
       setDuration(0);
       setActiveAnalysisType(null);
@@ -337,7 +459,31 @@ function DoctorScribePageContent() {
           setDuration(Math.floor(audio.duration));
         }
 
-        const text = await transcribeBlob(file);
+        // Compress uploaded audio
+        let compressedBlob: Blob = file;
+        try {
+          const compressed = await compressAudio(file, {
+            bitrate: 20000,
+            sampleRate: 16000,
+            channelCount: 1,
+          });
+          compressedBlob = compressed.blob;
+          
+          if (shouldWarnAboutSize(compressed.size)) {
+            setSizeWarning(`Audio file is ${formatFileSize(compressed.size)}. Processing may take longer.`);
+          }
+          if (exceedsApiLimit(compressed.size)) {
+            setError(`Compressed audio still exceeds 25MB limit (${formatFileSize(compressed.size)}). Cannot transcribe.`);
+            return;
+          }
+        } catch (e) {
+          console.warn('Compression failed, using original file:', e);
+        }
+
+        // Create object URL for playback
+        const audioUrl = URL.createObjectURL(compressedBlob);
+
+        const text = await transcribeBlob(compressedBlob);
         setSegments((prev) => [
           ...prev,
           {
@@ -345,6 +491,9 @@ function DoctorScribePageContent() {
             timestamp: Date.now(),
             text,
             isPending: false,
+            isDeleted: false,
+            audioBlob: compressedBlob,
+            audioUrl,
           },
         ]);
       } catch (e) {
@@ -363,7 +512,7 @@ function DoctorScribePageContent() {
   }, []);
 
   const handleAnalyze = useCallback(
-    async (type: AnalysisType) => {
+    (type: AnalysisType) => {
       if (!fullTranscript.trim()) return;
       if (!appointmentId) {
         setAnalysisError('Missing appointmentId. Open scribe from an appointment first.');
@@ -374,34 +523,17 @@ function DoctorScribePageContent() {
         return;
       }
 
+      // Set the active analysis type
       setActiveAnalysisType(type);
+      
+      // Set loading state immediately
       setAnalysisLoading(true);
       setAnalysisError(null);
-      setAnalysisContent('');
 
-      try {
-        const resp = await fetch('/api/transcribe/analyze', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ appointmentId, transcript: fullTranscript, type }),
-        });
-
-        const data = (await resp.json()) as { content?: string; error?: string; details?: string };
-        if (!resp.ok) {
-          const msg = data.details || data.error || 'Failed to generate analysis';
-          setAnalysisError(msg);
-          return;
-        }
-
-        setAnalysisContent(data.content || '');
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : 'Failed to generate analysis';
-        setAnalysisError(msg);
-      } finally {
-        setAnalysisLoading(false);
-      }
+      // Trigger manual analysis (bypasses debounce and cancels pending requests)
+      triggerManualAnalysis();
     },
-    [appointmentId, fullTranscript, scribeIsActive],
+    [appointmentId, fullTranscript, scribeIsActive, triggerManualAnalysis],
   );
 
   const handleCopyTranscript = useCallback(async () => {
@@ -412,18 +544,79 @@ function DoctorScribePageContent() {
     }
   }, [fullTranscript]);
 
+  // Audio playback handlers
+  const handlePlaySegment = useCallback((segmentId: string, audioUrl: string) => {
+    if (!audioManagerRef.current) return;
+    audioManagerRef.current.play(segmentId, audioUrl);
+    setPlayingSegmentId(segmentId);
+  }, []);
+
+  const handlePauseSegment = useCallback(() => {
+    if (!audioManagerRef.current) return;
+    audioManagerRef.current.pause();
+    setPlayingSegmentId(null);
+  }, []);
+
+  // Segment deletion handler
+  const handleDeleteSegment = useCallback((segmentId: string) => {
+    const confirmed = window.confirm(
+      'Are you sure you want to delete this transcript segment? This action cannot be undone.'
+    );
+    
+    if (!confirmed) return;
+
+    setSegments((prev) =>
+      prev.map((s) => {
+        if (s.id === segmentId) {
+          // Revoke object URL to free memory
+          if (s.audioUrl) {
+            URL.revokeObjectURL(s.audioUrl);
+          }
+          // Soft delete
+          return { ...s, isDeleted: true, audioUrl: undefined, audioBlob: undefined };
+        }
+        return s;
+      })
+    );
+
+    // Stop playback if this segment is playing
+    if (playingSegmentId === segmentId) {
+      handlePauseSegment();
+    }
+  }, [playingSegmentId, handlePauseSegment]);
+
   const handleClear = useCallback(() => {
     if (isRecording) stopRecording();
+    
+    // Revoke all object URLs
+    segments.forEach((segment) => {
+      if (segment.audioUrl) {
+        URL.revokeObjectURL(segment.audioUrl);
+      }
+    });
+    
+    // Stop any playing audio
+    audioManagerRef.current?.stop();
+    setPlayingSegmentId(null);
+    
+    // Cancel any pending analysis requests
+    cancelPendingAnalysis();
+    
     setSegments([]);
     setDuration(0);
     setError(null);
+    setSizeWarning(null);
     setActiveAnalysisType(null);
     setAnalysisContent('');
     setAnalysisError(null);
     setLiveInsights([]);
     prevTranscriptLengthRef.current = 0;
     hasInitializedFromServerRef.current = true;
-  }, [isRecording, stopRecording]);
+    
+    // Clear SBAR content and timestamp
+    setSbarContent(null);
+    setLastAnalysisTimestamp(null);
+  }, [isRecording, stopRecording, segments, cancelPendingAnalysis]);
 
   const handleResetTranscription = useCallback(async () => {
     if (!appointmentId) {
@@ -456,6 +649,9 @@ function DoctorScribePageContent() {
         return;
       }
 
+      // Cancel any pending analysis requests before clearing
+      cancelPendingAnalysis();
+
       // Clear local state after successful reset
       handleClear();
       
@@ -467,7 +663,7 @@ function DoctorScribePageContent() {
       const msg = e instanceof Error ? e.message : 'Failed to reset transcription';
       setError(msg);
     }
-  }, [appointmentId, handleClear, scribeIsActive, utils.appointment.getScribeData]);
+  }, [appointmentId, handleClear, scribeIsActive, utils.appointment.getScribeData, cancelPendingAnalysis]);
 
   const statusLabel = isRecording ? 'RECORDING' : isProcessingFile ? 'PROCESSING' : 'IDLE';
 
@@ -480,21 +676,25 @@ function DoctorScribePageContent() {
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Enhanced Recording Indicator */}
           <div
-            className={`px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-2 ${
+            className={`px-4 py-2 rounded-full text-sm font-bold flex items-center gap-3 transition-all ${
               isRecording
-                ? 'bg-red-100 text-red-700'
+                ? 'bg-red-600 text-white shadow-lg'
                 : isProcessingFile
-                  ? 'bg-blue-100 text-blue-700'
+                  ? 'bg-blue-600 text-white shadow-lg'
                   : 'bg-slate-100 text-slate-600'
             }`}
           >
             <div
-              className={`w-2 h-2 rounded-full ${
-                isRecording ? 'bg-red-500 animate-pulse' : isProcessingFile ? 'bg-blue-500 animate-pulse' : 'bg-slate-400'
+              className={`w-3 h-3 rounded-full ${
+                isRecording ? 'bg-white animate-pulse' : isProcessingFile ? 'bg-white animate-pulse' : 'bg-slate-400'
               }`}
             ></div>
-            {statusLabel}
+            <span className="tracking-wide">{statusLabel}</span>
+            {isRecording && (
+              <span className="text-2xl font-mono font-bold ml-2">{formatTime(duration)}</span>
+            )}
           </div>
 
           <button
@@ -511,10 +711,10 @@ function DoctorScribePageContent() {
             onClick={handleResetTranscription}
             className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-red-100 text-red-700 hover:bg-red-200 transition-colors disabled:opacity-50"
             disabled={isProcessingFile || !appointmentId || !scribeIsActive}
-            title="Reset transcription in database (permanent)"
+            title="Permanently reset transcription (deletes from database)"
           >
             <Trash2 className="w-4 h-4" />
-            Reset DB
+            Reset
           </button>
         </div>
       </div>
@@ -614,9 +814,19 @@ function DoctorScribePageContent() {
             </div>
           </div>
 
-          {(error || analysisError) && (
-            <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 text-sm">
-              {error || analysisError}
+          {(error || analysisError || sizeWarning) && (
+            <div className={`border rounded-xl p-4 text-sm ${
+              sizeWarning && !error && !analysisError
+                ? 'bg-yellow-50 border-yellow-200 text-yellow-700'
+                : 'bg-red-50 border-red-200 text-red-700'
+            }`}>
+              {sizeWarning && !error && !analysisError && (
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                  <span>{sizeWarning}</span>
+                </div>
+              )}
+              {(error || analysisError) && <span>{error || analysisError}</span>}
             </div>
           )}
 
@@ -629,35 +839,49 @@ function DoctorScribePageContent() {
             </div>
 
             <div className="max-h-[60vh] overflow-y-auto p-6 space-y-6">
-              {segments.length === 0 ? (
+              {segments.filter(s => !s.isDeleted).length === 0 ? (
                 <div className="text-slate-400 text-sm">Start recording or upload an audio file to see a transcript.</div>
               ) : (
-                segments.map((segment) => (
-                  <div key={segment.id} className={segment.isPending ? 'opacity-70' : 'opacity-100'}>
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-xs font-mono text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
-                        {new Date(segment.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                      {segment.isPending && (
-                        <span className="text-xs text-emerald-600 font-medium animate-pulse">Transcribing...</span>
+                segments
+                  .filter(s => !s.isDeleted)
+                  .map((segment) => (
+                    <div key={segment.id} className={segment.isPending ? 'opacity-70' : 'opacity-100'}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-xs font-mono text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
+                          {new Date(segment.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                        {segment.isPending && (
+                          <span className="text-xs text-emerald-600 font-medium animate-pulse">Transcribing...</span>
+                        )}
+                      </div>
+
+                      {segment.isPending ? (
+                        <div className="space-y-2 animate-pulse">
+                          <div className="h-4 bg-slate-100 rounded w-3/4"></div>
+                          <div className="h-4 bg-slate-100 rounded w-full"></div>
+                          <div className="h-4 bg-slate-100 rounded w-5/6"></div>
+                        </div>
+                      ) : segment.error ? (
+                        <div className="text-sm text-red-600">Error: {segment.error}</div>
+                      ) : (
+                        <>
+                          <div className="prose prose-slate prose-sm max-w-none text-slate-700">
+                            <ReactMarkdown>{segment.text}</ReactMarkdown>
+                          </div>
+                          
+                          {/* Segment Controls */}
+                          <SegmentControls
+                            segment={segment}
+                            isPlaying={playingSegmentId === segment.id}
+                            playbackProgress={playbackProgress[segment.id] || 0}
+                            onPlay={() => segment.audioUrl && handlePlaySegment(segment.id, segment.audioUrl)}
+                            onPause={handlePauseSegment}
+                            onDelete={() => handleDeleteSegment(segment.id)}
+                          />
+                        </>
                       )}
                     </div>
-
-                    {segment.isPending ? (
-                      <div className="space-y-2 animate-pulse">
-                        <div className="h-4 bg-slate-100 rounded w-3/4"></div>
-                        <div className="h-4 bg-slate-100 rounded w-full"></div>
-                        <div className="h-4 bg-slate-100 rounded w-5/6"></div>
-                      </div>
-                    ) : segment.error ? (
-                      <div className="text-sm text-red-600">Error: {segment.error}</div>
-                    ) : (
-                      <div className="prose prose-slate prose-sm max-w-none text-slate-700">
-                        <ReactMarkdown>{segment.text}</ReactMarkdown>
-                      </div>
-                    )}
-                  </div>
-                ))
+                  ))
               )}
               <div ref={transcriptEndRef} />
             </div>
@@ -665,10 +889,10 @@ function DoctorScribePageContent() {
         </div>
 
         <div className="lg:col-span-5 space-y-6">
-          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <section className="bg-white rounded-xl border border-slate-200 overflow-hidden" aria-labelledby="clinical-notes-heading">
             <div className="p-4 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-emerald-600" />
-              <h2 className="font-semibold text-slate-800">Clinical Notes</h2>
+              <Sparkles className="w-5 h-5 text-emerald-600" aria-hidden="true" />
+              <h2 id="clinical-notes-heading" className="font-semibold text-slate-800">Clinical Notes</h2>
             </div>
 
             {(liveInsights.length > 0 || isGeneratingInsights) && (
@@ -699,7 +923,7 @@ function DoctorScribePageContent() {
               </div>
             )}
 
-            <div className="p-4 flex flex-wrap gap-2 border-b border-slate-100">
+            <div className="p-4 flex flex-wrap gap-2 border-b border-slate-100" role="group" aria-label="Analysis type selection">
               {([
                 { type: 'summary' as const, label: 'Summary' },
                 { type: 'soap' as const, label: 'SOAP' },
@@ -710,7 +934,9 @@ function DoctorScribePageContent() {
                   key={t.type}
                   onClick={() => handleAnalyze(t.type)}
                   disabled={analysisLoading || !fullTranscript.trim() || !appointmentId || !scribeIsActive}
-                  className={`px-3 py-2 rounded-full text-sm font-medium transition-colors border disabled:opacity-50 ${
+                  aria-pressed={activeAnalysisType === t.type}
+                  aria-label={`Generate ${t.label} analysis`}
+                  className={`px-3 py-2 rounded-full text-sm font-medium transition-colors border disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 ${
                     activeAnalysisType === t.type
                       ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
                       : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:border-slate-300'
@@ -722,24 +948,18 @@ function DoctorScribePageContent() {
             </div>
 
             <div className="p-6 bg-slate-50/50 min-h-[300px]">
-              {analysisLoading ? (
-                <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-4">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
-                  <p className="text-sm animate-pulse">Generating notes...</p>
-                </div>
-              ) : analysisError ? (
-                <div className="text-red-500 text-center p-4 bg-red-50 rounded-lg border border-red-100">
-                  {analysisError}
-                </div>
-              ) : analysisContent ? (
-                <div className="prose prose-slate prose-sm max-w-none">
-                  <ReactMarkdown>{analysisContent}</ReactMarkdown>
-                </div>
-              ) : (
+              {!sbarContent && !analysisLoading && !isAutoAnalyzing && !analysisError ? (
                 <div className="text-slate-400 text-sm">Select a note type to generate doctor-ready documentation.</div>
+              ) : (
+                <SBARDisplay
+                  content={sbarContent}
+                  isLoading={analysisLoading || isAutoAnalyzing}
+                  lastUpdated={lastAnalysisTimestamp}
+                  error={analysisError}
+                />
               )}
             </div>
-          </div>
+          </section>
         </div>
       </div>
     </div>

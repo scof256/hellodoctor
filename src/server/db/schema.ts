@@ -28,6 +28,7 @@ export const verificationStatusEnum = pgEnum('verification_status', ['pending', 
 export const appointmentStatusEnum = pgEnum('appointment_status', ['pending', 'confirmed', 'completed', 'cancelled', 'no_show']);
 export const connectionStatusEnum = pgEnum('connection_status', ['active', 'disconnected', 'blocked']);
 export const intakeStatusEnum = pgEnum('intake_status', ['not_started', 'in_progress', 'ready', 'reviewed']);
+export const contextLayerEnum = pgEnum('context_layer', ['patient-intake', 'doctor-enhancement']);
 
 // Users table (synced with Clerk)
 export const users = pgTable('users', {
@@ -223,11 +224,16 @@ export const chatMessages = pgTable('chat_messages', {
   images: jsonb('images').$type<string[]>(),
   activeAgent: text('active_agent'),
   groundingMetadata: jsonb('grounding_metadata'),
+  contextLayer: contextLayerEnum('context_layer').notNull().default('patient-intake'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, (table) => [
   index('chat_messages_session_id_idx').on(table.sessionId),
   // Composite index for ordering messages by session and creation time (Requirement 5.4)
   index('chat_messages_session_created_idx').on(table.sessionId, table.createdAt),
+  // Index for efficient querying by context layer
+  index('chat_messages_context_layer_idx').on(table.contextLayer),
+  // Composite index for filtering by session and context layer
+  index('chat_messages_session_context_idx').on(table.sessionId, table.contextLayer),
 ]);
 
 // Appointments

@@ -81,10 +81,10 @@ export function AppointmentCardSkeleton() {
  * Skeleton for chat messages in messaging interface.
  * Shows placeholder for message bubbles with varying widths to simulate real messages.
  */
-export function MessageSkeleton({ align = 'left' }: { align?: 'left' | 'right' }) {
+export function MessageSkeleton({ align = 'left', index = 0 }: { align?: 'left' | 'right', index?: number }) {
   const widths = ['w-3/4', 'w-2/3', 'w-1/2', 'w-5/6'];
-  const randomWidth = widths[Math.floor(Math.random() * widths.length)];
-  
+  const randomWidth = widths[index % widths.length];
+
   return (
     <div className={`flex ${align === 'right' ? 'justify-end' : 'justify-start'} mb-4`}>
       <div className={`${randomWidth} max-w-[80%]`}>
@@ -93,9 +93,8 @@ export function MessageSkeleton({ align = 'left' }: { align?: 'left' | 'right' }
             <div className="w-8 h-8 rounded-full bg-slate-200 animate-pulse flex-shrink-0"></div>
           )}
           <div className="flex-1">
-            <div className={`rounded-2xl p-3 ${
-              align === 'right' ? 'bg-green-100' : 'bg-slate-100'
-            } animate-pulse`}>
+            <div className={`rounded-2xl p-3 ${align === 'right' ? 'bg-green-100' : 'bg-slate-100'
+              } animate-pulse`}>
               <div className="h-4 bg-slate-200 rounded mb-2"></div>
               <div className="h-4 bg-slate-200 rounded w-3/4"></div>
             </div>
@@ -120,7 +119,7 @@ export function MessageListSkeleton({ count = 5 }: { count?: number }) {
   return (
     <div className="space-y-2">
       {Array.from({ length: count }).map((_, i) => (
-        <MessageSkeleton key={i} align={i % 3 === 0 ? 'right' : 'left'} />
+        <MessageSkeleton key={i} align={i % 3 === 0 ? 'right' : 'left'} index={i} />
       ))}
     </div>
   );

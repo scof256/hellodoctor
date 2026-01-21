@@ -7,6 +7,7 @@ import { api } from '@/trpc/react';
 import IntakeChatInterface from '@/app/components/IntakeChatInterface';
 import MedicalSidebar from '@/app/components/MedicalSidebar';
 import BookingModal from '@/app/components/BookingModal';
+import { EmergencyAlert } from '@/app/components/EmergencyAlert';
 import { INITIAL_MEDICAL_DATA, INITIAL_THOUGHT } from '@/types';
 import type { Message, MedicalData, DoctorThought, IntakeStage } from '@/types';
 import { useUser } from '@clerk/nextjs';
@@ -119,6 +120,7 @@ export default function PatientIntakePage() {
 
   const isReady = useMemo(() => medicalData.bookingStatus === 'ready', [medicalData.bookingStatus]);
   const isBooked = useMemo(() => medicalData.bookingStatus === 'booked', [medicalData.bookingStatus]);
+  const isEmergency = useMemo(() => medicalData.vitalsData?.triageDecision === 'emergency', [medicalData.vitalsData?.triageDecision]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -297,9 +299,25 @@ export default function PatientIntakePage() {
       </header>
       <div className="min-h-0 flex overflow-hidden">
         <div className="flex-1 relative min-h-0">
-          <IntakeChatInterface messages={messages} onSendMessage={handleSendMessage} isLoading={isSending} currentStage={currentStage} completeness={completeness} variant="patient" sessionId={resolvedSessionId ?? undefined} showTracker={false} />
+          {isEmergency ? (
+            <div className="h-full overflow-y-auto p-4 sm:p-6 flex items-center justify-center">
+              <div className="max-w-2xl w-full">
+                <EmergencyAlert
+                  reason={medicalData.vitalsData?.triageReason || 'Your vital signs or symptoms indicate you may need immediate medical attention.'}
+                  recommendations={[
+                    'Call emergency services (911) immediately if you are experiencing severe symptoms',
+                    'Go to the nearest emergency room',
+                    'Do not drive yourself - call an ambulance or have someone drive you',
+                    'If symptoms worsen while waiting, call 911 immediately'
+                  ]}
+                />
+              </div>
+            </div>
+          ) : (
+            <IntakeChatInterface messages={messages} onSendMessage={handleSendMessage} isLoading={isSending} currentStage={currentStage} completeness={completeness} variant="patient" sessionId={resolvedSessionId ?? undefined} showTracker={false} />
+          )}
 
-          {isReady && (
+          {isReady && !isEmergency && (
             <>
               <div className="absolute bottom-24 right-6 z-20 hidden md:flex">
                 <button
@@ -337,11 +355,7 @@ export default function PatientIntakePage() {
           </div>
         </div>
 
-        <div
-          className={`${
-            medicalSidebarOpen ? 'hidden md:flex' : 'hidden'
-          } h-full w-72 flex-shrink-0 bg-white shadow-none md:w-72 lg:w-80 xl:w-96`}
-        >
+        <div className="hidden lg:flex h-full w-72 flex-shrink-0 bg-white shadow-none lg:w-72 xl:w-80 2xl:w-96">
           <MedicalSidebar data={medicalData} thought={thought} onTopicTrigger={handleTopicTrigger} showDoctorHandover={false} />
         </div>
       </div>

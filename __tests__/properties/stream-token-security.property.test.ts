@@ -59,9 +59,11 @@ describe('Property 8: Token Security', () => {
           expect(result.expiresAt).toBeLessThanOrEqual(expectedMaxExpiry);
           
           // Verify the expiration was passed to the Stream SDK
+          // Note: iat (issued at) is included with a 60-second clock skew buffer
           expect(mockGenerateUserToken).toHaveBeenCalledWith({
             user_id: userId,
-            exp: result.expiresAt
+            exp: result.expiresAt,
+            iat: expect.any(Number)
           });
         }
       ),
@@ -136,9 +138,11 @@ describe('Property 8: Token Security', () => {
           expect(result.expiresAt).toBeGreaterThan(0);
           
           // Verify the token generation was called with security parameters
+          // Note: iat (issued at) is included with a 60-second clock skew buffer
           expect(mockGenerateUserToken).toHaveBeenCalledWith({
             user_id: userId,
-            exp: expect.any(Number)
+            exp: expect.any(Number),
+            iat: expect.any(Number)
           });
         }
       ),

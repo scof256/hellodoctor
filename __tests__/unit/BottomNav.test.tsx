@@ -40,10 +40,10 @@ describe('BottomNav Component', () => {
   it('should render all navigation items', () => {
     render(<BottomNav items={defaultItems} />);
 
-    // Check that all labels are rendered
-    expect(screen.getByText('Home')).toBeInTheDocument();
-    expect(screen.getByText('Messages')).toBeInTheDocument();
-    expect(screen.getByText('Profile')).toBeInTheDocument();
+    // Check that all labels are rendered (using localization keys)
+    expect(screen.getByText('navigation.home')).toBeInTheDocument();
+    expect(screen.getByText('navigation.messages')).toBeInTheDocument();
+    expect(screen.getByText('navigation.profile')).toBeInTheDocument();
   });
 
   it('should render with correct structure and styling', () => {
@@ -69,10 +69,10 @@ describe('BottomNav Component', () => {
   it('should highlight active tab in green', () => {
     const { container } = render(<BottomNav items={defaultItems} activeRoute="/patient" />);
 
-    // Find the Home tab (should be active)
-    const homeItem = screen.getByText('Home').closest('.bottom-nav-item');
+    // Find the Home tab (should be active) using localization key
+    const homeItem = screen.getByText('navigation.home').closest('.bottom-nav-item');
     const homeIcon = homeItem?.querySelector('div');
-    const homeLabel = screen.getByText('Home');
+    const homeLabel = screen.getByText('navigation.home');
 
     // Active tab should have green color (#25D366)
     expect(homeIcon).toHaveStyle({ color: '#25D366' });
@@ -82,8 +82,8 @@ describe('BottomNav Component', () => {
   it('should show inactive tabs in gray', () => {
     const { container } = render(<BottomNav items={defaultItems} activeRoute="/patient" />);
 
-    // Find the Messages tab (should be inactive)
-    const messagesLabel = screen.getByText('Messages');
+    // Find the Messages tab (should be inactive) using localization key
+    const messagesLabel = screen.getByText('navigation.messages');
 
     // Inactive tab should have gray color (#8696A0)
     expect(messagesLabel).toHaveStyle({ color: '#8696A0', fontWeight: '400' });
@@ -164,7 +164,8 @@ describe('BottomNav Component', () => {
     const onNavigate = vi.fn();
     render(<BottomNav items={defaultItems} onNavigate={onNavigate} />);
 
-    const messagesLink = screen.getByText('Messages').closest('a');
+    // Use localization key to find the link
+    const messagesLink = screen.getByText('navigation.messages').closest('a');
     messagesLink?.click();
 
     expect(onNavigate).toHaveBeenCalledWith('/patient/messages');

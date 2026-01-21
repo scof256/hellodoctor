@@ -37,9 +37,31 @@ export function mergeMedicalData(
     return update;
   };
 
+  // Merge vitals data, preserving existing values and accepting updates
+  const mergeVitalsData = (current: any, update?: any): any => {
+    if (!update) return current;
+    
+    return {
+      patientName: mergeString(current.patientName, update.patientName),
+      patientAge: update.patientAge !== undefined ? update.patientAge : current.patientAge,
+      patientGender: update.patientGender !== undefined ? update.patientGender : current.patientGender,
+      vitalsCollected: update.vitalsCollected !== undefined ? update.vitalsCollected : current.vitalsCollected,
+      temperature: update.temperature ? { ...current.temperature, ...update.temperature } : current.temperature,
+      weight: update.weight ? { ...current.weight, ...update.weight } : current.weight,
+      bloodPressure: update.bloodPressure ? { ...current.bloodPressure, ...update.bloodPressure } : current.bloodPressure,
+      currentStatus: mergeString(current.currentStatus, update.currentStatus),
+      triageDecision: update.triageDecision !== undefined ? update.triageDecision : current.triageDecision,
+      triageReason: mergeString(current.triageReason, update.triageReason),
+      vitalsStageCompleted: update.vitalsStageCompleted !== undefined ? update.vitalsStageCompleted : current.vitalsStageCompleted
+    };
+  };
+
   // Create merged data
   const mergedData: MedicalData = {
     ...currentData,
+    // Vitals data - merge with preservation
+    vitalsData: mergeVitalsData(currentData.vitalsData, updates.vitalsData),
+    
     chiefComplaint: mergeString(currentData.chiefComplaint, updates.chiefComplaint),
     hpi: mergeString(currentData.hpi, updates.hpi),
     familyHistory: mergeString(currentData.familyHistory, updates.familyHistory),
@@ -120,6 +142,17 @@ export function validateMedicalData(data: MedicalData, allowExplicitAgent: boole
   
   if (!Array.isArray(data.allergies)) {
     errors.push('Allergies must be an array');
+  }
+
+  // Check vitals data consistency
+  if (data.vitalsData) {
+    if (data.vitalsData.vitalsStageCompleted && !data.vitalsData.patientName) {
+      errors.push('Vitals stage completed but patient name is missing');
+    }
+    
+    if (data.vitalsData.triageDecision === 'emergency' && !data.vitalsData.triageReason) {
+      errors.push('Emergency triage decision requires a reason');
+    }
   }
 
   return {

@@ -1,0 +1,8 @@
+{
+  "name": "a2a Dr. Gemini Intake Agent",
+  "description": "An intelligent, hypothesis-driven medical intake chatbot that uses Bayesian reasoning to interview patients efficiently.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}

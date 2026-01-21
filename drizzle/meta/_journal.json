@@ -78,6 +78,20 @@
       "when": 1768580000000,
       "tag": "0010_doctor-professional-profiles",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1768670000000,
+      "tag": "0011_add-context-layer",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1768760000000,
+      "tag": "0012_patient-intake-immutability",
+      "breakpoints": true
     }
   ]
 }

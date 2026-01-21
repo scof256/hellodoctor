@@ -49,6 +49,7 @@ interface QuickReply {
 }
 
 const STAGES: { id: IntakeStage; label: string; desc: string }[] = [
+  { id: 'vitals', label: 'Vitals', desc: 'Basic Info' },
   { id: 'triage', label: 'Basics', desc: 'Main Symptom' },
   { id: 'investigation', label: 'Symptoms', desc: 'Details & Pain' },
   { id: 'records', label: 'Records', desc: 'Tests & Scans' },

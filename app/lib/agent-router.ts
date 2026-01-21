@@ -5,6 +5,11 @@ import { AgentRole, MedicalData, IntakeStage } from '../types';
  * This replaces the complex orchestrator-based routing with simple conditional logic.
  */
 export function determineAgent(medicalData: MedicalData): AgentRole {
+  // Priority 0: VitalsTriageAgent - No vitals stage completed yet
+  if (!medicalData.vitalsData?.vitalsStageCompleted) {
+    return 'VitalsTriageAgent';
+  }
+
   // Priority 1: Triage - No chief complaint yet
   if (!medicalData.chiefComplaint || medicalData.chiefComplaint.trim().length === 0) {
     return 'Triage';
@@ -63,6 +68,7 @@ function hasCompleteData(medicalData: MedicalData): boolean {
  */
 export function agentToStage(agent: AgentRole): IntakeStage {
   const agentStageMap: Record<AgentRole, IntakeStage> = {
+    'VitalsTriageAgent': 'vitals',
     'Triage': 'triage',
     'ClinicalInvestigator': 'investigation',
     'RecordsClerk': 'records',
@@ -83,6 +89,12 @@ export function calculateCompleteness(medicalData: MedicalData): number {
   ];
   
   let filled = 0;
+  
+  // Check vitals data completion
+  if (medicalData.vitalsData?.vitalsStageCompleted) {
+    filled += 0.5;
+  }
+  
   fields.forEach(field => {
     const val = medicalData[field];
     if (Array.isArray(val)) {
@@ -124,6 +136,7 @@ export function calculateUIState(medicalData: MedicalData): { stage: IntakeStage
   return { stage, completeness };
 }
 export const ROUTING_PRIORITY = {
+  'VitalsTriageAgent': (data: MedicalData) => !data.vitalsData?.vitalsStageCompleted,
   'Triage': (data: MedicalData) => !data.chiefComplaint || data.chiefComplaint.trim().length === 0,
   'ClinicalInvestigator': (data: MedicalData) => 
     data.chiefComplaint && data.chiefComplaint.trim().length > 0 && (!data.hpi || data.hpi.trim().length < 50),

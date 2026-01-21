@@ -105,8 +105,11 @@ describe('Retry Logic', () => {
       const operation = vi.fn().mockRejectedValue(error);
       
       const promise = retryWithBackoff(operation, { maxRetries: 2 });
+      
+      // Run all timers and wait for promise to reject
       await vi.runAllTimersAsync();
-
+      
+      // Properly handle the rejection
       await expect(promise).rejects.toThrow('persistent failure');
       expect(operation).toHaveBeenCalledTimes(3); // Initial + 2 retries
     });
@@ -136,8 +139,11 @@ describe('Retry Logic', () => {
       const shouldRetry = vi.fn().mockReturnValue(false);
       
       const promise = retryWithBackoff(operation, { maxRetries: 3, shouldRetry });
+      
+      // Run all timers and wait for promise to reject
       await vi.runAllTimersAsync();
-
+      
+      // Properly handle the rejection
       await expect(promise).rejects.toThrow('non-retryable');
       expect(operation).toHaveBeenCalledTimes(1);
       expect(shouldRetry).toHaveBeenCalledTimes(1);

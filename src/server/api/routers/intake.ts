@@ -17,7 +17,7 @@ import {
 // Aliased table references for JOINs (Requirements: 1.1)
 // These allow us to join the users table twice - once for doctor, once for patient
 import { INITIAL_MEDICAL_DATA, INITIAL_THOUGHT } from '@/types';
-import type { MedicalData, SBAR, DoctorThought, Message, AgentRole, FollowUpCounts, TrackingState } from '@/types';
+import type { MedicalData, SBAR, DoctorThought, Message, AgentRole, FollowUpCounts, TrackingState, ContextLayer } from '@/types';
 import { sendAIMessage, generateClinicalHandover } from '../../services/ai';
 import { calculateIntakeCompleteness, mergeMedicalData, determineAgent } from '../../services/intake-utils';
 import { notificationService } from '../../services/notification';
@@ -176,7 +176,7 @@ export const intakeRouter = createTRPCRouter({
           medicalData: INITIAL_MEDICAL_DATA,
           doctorThought: INITIAL_THOUGHT,
           completeness: 0,
-          currentAgent: 'Triage',
+          currentAgent: 'VitalsTriageAgent', // Start with vitals collection
         })
         .returning();
 
@@ -765,7 +765,7 @@ export const intakeRouter = createTRPCRouter({
           medicalData: INITIAL_MEDICAL_DATA,
           doctorThought: INITIAL_THOUGHT,
           completeness: 0,
-          currentAgent: 'Triage',
+          currentAgent: 'VitalsTriageAgent', // Start with vitals collection
         })
         .returning();
 
@@ -1144,6 +1144,176 @@ export const intakeRouter = createTRPCRouter({
     }),
 
   /**
+   * Get messages for an intake session by connectionId.
+   * Filters messages to only those belonging to sessions for the specified connection.
+   * Requirements: 2.1, 3.4
+   */
+  getMessages: protectedProcedure
+    .input(z.object({ connectionId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      // Verify user has access to this connection
+      const connection = await ctx.db.query.connections.findFirst({
+        where: eq(connections.id, input.connectionId),
+      });
+
+      if (!connection) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Connection not found.',
+        });
+      }
+
+      // Check authorization - must be patient or doctor in connection
+      const patient = await ctx.db.query.patients.findFirst({
+        where: eq(patients.userId, ctx.user.id),
+      });
+
+      const doctor = await ctx.db.query.doctors.findFirst({
+        where: eq(doctors.userId, ctx.user.id),
+      });
+
+      const isPatientInConnection = patient && connection.patientId === patient.id;
+      const isDoctorInConnection = doctor && connection.doctorId === doctor.id;
+      const isSuperAdmin = ctx.user.primaryRole === 'super_admin';
+
+      if (!isPatientInConnection && !isDoctorInConnection && !isSuperAdmin) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'You are not authorized to view messages for this connection.',
+        });
+      }
+
+      // Get all intake sessions for this connection
+      const sessions = await ctx.db.query.intakeSessions.findMany({
+        where: eq(intakeSessions.connectionId, input.connectionId),
+      });
+
+      if (sessions.length === 0) {
+        return { messages: [] };
+      }
+
+      const sessionIds = sessions.map(s => s.id);
+
+      // Get all messages for these sessions
+      const messages = await ctx.db.query.chatMessages.findMany({
+        where: sessionIds.length > 0 
+          ? or(...sessionIds.map(id => eq(chatMessages.sessionId, id)))
+          : undefined,
+        orderBy: [chatMessages.createdAt],
+      });
+
+      // Transform messages to the expected format
+      const formattedMessages: Message[] = messages.map((msg) => ({
+        id: msg.id,
+        role: msg.role as 'user' | 'model' | 'doctor',
+        text: msg.content,
+        images: msg.images ?? undefined,
+        timestamp: msg.createdAt,
+        groundingMetadata: msg.groundingMetadata,
+        activeAgent: msg.activeAgent as Message['activeAgent'],
+        contextLayer: msg.contextLayer as ContextLayer,
+      }));
+
+      return { messages: formattedMessages };
+    }),
+
+  /**
+   * Get the latest SBAR report for a connection.
+   * Returns the most recent SBAR from any intake session for this connection.
+   * Requirements: 3.5, 4.1
+   */
+  getSBAR: protectedProcedure
+    .input(z.object({ connectionId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      // Verify user has access to this connection
+      const connection = await ctx.db.query.connections.findFirst({
+        where: eq(connections.id, input.connectionId),
+      });
+
+      if (!connection) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Connection not found.',
+        });
+      }
+
+      // Check authorization - must be doctor in connection (SBAR is doctor-only)
+      const doctor = await ctx.db.query.doctors.findFirst({
+        where: eq(doctors.userId, ctx.user.id),
+      });
+
+      const isDoctorInConnection = doctor && connection.doctorId === doctor.id;
+      const isSuperAdmin = ctx.user.primaryRole === 'super_admin';
+
+      if (!isDoctorInConnection && !isSuperAdmin) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'You are not authorized to view SBAR reports for this connection.',
+        });
+      }
+
+      // Get the most recent intake session with a clinical handover
+      const session = await ctx.db.query.intakeSessions.findFirst({
+        where: eq(intakeSessions.connectionId, input.connectionId),
+        orderBy: [desc(intakeSessions.updatedAt)],
+      });
+
+      if (!session || !session.clinicalHandover) {
+        return { sbar: null };
+      }
+
+      return { sbar: session.clinicalHandover as SBAR };
+    }),
+
+  /**
+   * Get clinical reasoning (doctor thought) for a connection.
+   * Returns the most recent clinical reasoning from any intake session for this connection.
+   * Requirements: 4.1
+   */
+  getClinicalReasoning: protectedProcedure
+    .input(z.object({ connectionId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      // Verify user has access to this connection
+      const connection = await ctx.db.query.connections.findFirst({
+        where: eq(connections.id, input.connectionId),
+      });
+
+      if (!connection) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Connection not found.',
+        });
+      }
+
+      // Check authorization - must be doctor in connection (clinical reasoning is doctor-only)
+      const doctor = await ctx.db.query.doctors.findFirst({
+        where: eq(doctors.userId, ctx.user.id),
+      });
+
+      const isDoctorInConnection = doctor && connection.doctorId === doctor.id;
+      const isSuperAdmin = ctx.user.primaryRole === 'super_admin';
+
+      if (!isDoctorInConnection && !isSuperAdmin) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'You are not authorized to view clinical reasoning for this connection.',
+        });
+      }
+
+      // Get the most recent intake session with doctor thought
+      const session = await ctx.db.query.intakeSessions.findFirst({
+        where: eq(intakeSessions.connectionId, input.connectionId),
+        orderBy: [desc(intakeSessions.updatedAt)],
+      });
+
+      if (!session || !session.doctorThought) {
+        return { clinicalReasoning: null };
+      }
+
+      return { clinicalReasoning: session.doctorThought as DoctorThought };
+    }),
+
+  /**
    * Send a message in an intake session and get AI response.
    * Requirements: 7.3, 7.4, 11.1, 11.2, 11.3, 11.4, 11.5
    * Requirement 6.4: Request deduplication based on content hash and timestamp
@@ -1291,6 +1461,11 @@ export const intakeRouter = createTRPCRouter({
         ...INITIAL_MEDICAL_DATA,
         ...currentMedicalData,
         historyCheckCompleted: currentMedicalData.historyCheckCompleted ?? false,
+        // Backward compatibility: Set vitalsStageCompleted to true for existing sessions without vitalsData
+        vitalsData: currentMedicalData.vitalsData ?? {
+          ...INITIAL_MEDICAL_DATA.vitalsData,
+          vitalsStageCompleted: true, // Skip vitals for existing sessions
+        },
       };
 
       // --- QUESTION OPTIMIZATION TRACKING (Requirements: 2.1, 2.4, 3.1, 3.4, 5.3) ---
@@ -2325,5 +2500,419 @@ export const intakeRouter = createTRPCRouter({
       });
 
       return redactSessionForPatient(updatedSession);
+    }),
+
+  /**
+   * Add a doctor message to an intake session.
+   * Messages are stored with contextLayer: 'doctor-enhancement' to separate from patient intake.
+   * Triggers SBAR regeneration using both patient-intake and doctor-enhancement messages.
+   * Requirements: 2.3, 2.6, 5.5, 5.6
+   */
+  addMessage: doctorProcedure
+    .input(z.object({
+      connectionId: z.string().uuid(),
+      content: z.string().min(1),
+      messageType: z.enum(['text', 'test-result', 'exam-finding']).default('text'),
+      metadata: z.record(z.any()).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      if (!ctx.doctor) {
+        throw new TRPCError({
+          code: 'UNAUTHORIZED',
+          message: 'Only doctors can add enhancement messages.',
+        });
+      }
+
+      // Verify the connection exists and belongs to this doctor
+      const connection = await ctx.db.query.connections.findFirst({
+        where: and(
+          eq(connections.id, input.connectionId),
+          eq(connections.doctorId, ctx.doctor.id)
+        ),
+      });
+
+      if (!connection) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Connection not found or you do not have access.',
+        });
+      }
+
+      // Get the most recent intake session for this connection
+      const session = await ctx.db.query.intakeSessions.findFirst({
+        where: eq(intakeSessions.connectionId, input.connectionId),
+        orderBy: [desc(intakeSessions.updatedAt)],
+      });
+
+      if (!session) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'No intake session found for this connection.',
+        });
+      }
+
+      // Create the doctor message with contextLayer: 'doctor-enhancement'
+      const messageResult = await ctx.db
+        .insert(chatMessages)
+        .values({
+          sessionId: session.id,
+          role: 'doctor',
+          content: input.content,
+          images: null,
+          activeAgent: null,
+          groundingMetadata: input.metadata ?? null,
+          contextLayer: 'doctor-enhancement', // Critical: marks as doctor enhancement
+        })
+        .returning();
+
+      const newMessage = messageResult[0];
+      if (!newMessage) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to create message.',
+        });
+      }
+
+      // Get all messages for SBAR regeneration (both patient-intake and doctor-enhancement)
+      const allMessages = await ctx.db.query.chatMessages.findMany({
+        where: eq(chatMessages.sessionId, session.id),
+        orderBy: [chatMessages.createdAt],
+      });
+
+      // Get current medical data
+      let currentMedicalData = (session.medicalData as MedicalData) ?? INITIAL_MEDICAL_DATA;
+
+      // Merge doctor enhancements into medical data context
+      // Doctor messages with test results or exam findings should be included in the context
+      const doctorEnhancements = allMessages
+        .filter(msg => msg.contextLayer === 'doctor-enhancement')
+        .map(msg => msg.content)
+        .join('\n\n');
+
+      if (doctorEnhancements) {
+        // Add doctor enhancements to a special field in medical data for SBAR generation
+        currentMedicalData = {
+          ...currentMedicalData,
+          doctorNotes: doctorEnhancements,
+        };
+      }
+
+      // Regenerate SBAR using both context layers
+      const clinicalHandover = await generateClinicalHandover(currentMedicalData);
+
+      // Update session with new SBAR
+      await ctx.db
+        .update(intakeSessions)
+        .set({
+          clinicalHandover,
+          updatedAt: new Date(),
+        })
+        .where(eq(intakeSessions.id, session.id));
+
+      // Log the message addition
+      await auditService.log({
+        userId: ctx.user.id,
+        action: 'message_sent',
+        resourceType: 'message',
+        resourceId: newMessage.id,
+        metadata: {
+          connectionId: input.connectionId,
+          sessionId: session.id,
+          messageType: input.messageType,
+          contextLayer: 'doctor-enhancement',
+        },
+      });
+
+      // Transform message to expected format
+      const formattedMessage: Message = {
+        id: newMessage.id,
+        role: 'doctor',
+        text: newMessage.content,
+        images: undefined,
+        timestamp: newMessage.createdAt,
+        groundingMetadata: newMessage.groundingMetadata,
+        activeAgent: undefined,
+        contextLayer: 'doctor-enhancement',
+      };
+
+      return { 
+        message: formattedMessage,
+        sbar: clinicalHandover,
+      };
+    }),
+
+  /**
+   * Add a doctor image message (test result, scan, etc.) to an intake session.
+   * Images are stored with contextLayer: 'doctor-enhancement' to separate from patient intake.
+   * Triggers SBAR regeneration using both patient-intake and doctor-enhancement messages.
+   * Requirements: 2.3, 2.4, 5.5, 5.6
+   */
+  addImageMessage: doctorProcedure
+    .input(z.object({
+      connectionId: z.string().uuid(),
+      imageUrl: z.string().url(),
+      messageType: z.enum(['image', 'test-result']).default('image'),
+      caption: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      if (!ctx.doctor) {
+        throw new TRPCError({
+          code: 'UNAUTHORIZED',
+          message: 'Only doctors can add enhancement messages.',
+        });
+      }
+
+      // Verify the connection exists and belongs to this doctor
+      const connection = await ctx.db.query.connections.findFirst({
+        where: and(
+          eq(connections.id, input.connectionId),
+          eq(connections.doctorId, ctx.doctor.id)
+        ),
+      });
+
+      if (!connection) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Connection not found or you do not have access.',
+        });
+      }
+
+      // Get the most recent intake session for this connection
+      const session = await ctx.db.query.intakeSessions.findFirst({
+        where: eq(intakeSessions.connectionId, input.connectionId),
+        orderBy: [desc(intakeSessions.updatedAt)],
+      });
+
+      if (!session) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'No intake session found for this connection.',
+        });
+      }
+
+      // Create the doctor image message with contextLayer: 'doctor-enhancement'
+      const messageResult = await ctx.db
+        .insert(chatMessages)
+        .values({
+          sessionId: session.id,
+          role: 'doctor',
+          content: input.caption ?? `[${input.messageType}]`,
+          images: [input.imageUrl],
+          activeAgent: null,
+          groundingMetadata: { messageType: input.messageType },
+          contextLayer: 'doctor-enhancement', // Critical: marks as doctor enhancement
+        })
+        .returning();
+
+      const newMessage = messageResult[0];
+      if (!newMessage) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to create image message.',
+        });
+      }
+
+      // Get all messages for SBAR regeneration (both patient-intake and doctor-enhancement)
+      const allMessages = await ctx.db.query.chatMessages.findMany({
+        where: eq(chatMessages.sessionId, session.id),
+        orderBy: [chatMessages.createdAt],
+      });
+
+      // Get current medical data
+      let currentMedicalData = (session.medicalData as MedicalData) ?? INITIAL_MEDICAL_DATA;
+
+      // Merge doctor enhancements into medical data context
+      const doctorEnhancements = allMessages
+        .filter(msg => msg.contextLayer === 'doctor-enhancement')
+        .map(msg => {
+          if (msg.images && msg.images.length > 0) {
+            return `${msg.content} [Image: ${msg.images.join(', ')}]`;
+          }
+          return msg.content;
+        })
+        .join('\n\n');
+
+      if (doctorEnhancements) {
+        // Add doctor enhancements to medical data for SBAR generation
+        currentMedicalData = {
+          ...currentMedicalData,
+          doctorNotes: doctorEnhancements,
+        };
+      }
+
+      // Regenerate SBAR using both context layers
+      const clinicalHandover = await generateClinicalHandover(currentMedicalData);
+
+      // Update session with new SBAR
+      await ctx.db
+        .update(intakeSessions)
+        .set({
+          clinicalHandover,
+          updatedAt: new Date(),
+        })
+        .where(eq(intakeSessions.id, session.id));
+
+      // Log the image message addition
+      await auditService.log({
+        userId: ctx.user.id,
+        action: 'message_sent',
+        resourceType: 'message',
+        resourceId: newMessage.id,
+        metadata: {
+          connectionId: input.connectionId,
+          sessionId: session.id,
+          messageType: input.messageType,
+          contextLayer: 'doctor-enhancement',
+          imageUrl: input.imageUrl,
+        },
+      });
+
+      // Transform message to expected format
+      const formattedMessage: Message = {
+        id: newMessage.id,
+        role: 'doctor',
+        text: newMessage.content,
+        images: [input.imageUrl],
+        timestamp: newMessage.createdAt,
+        groundingMetadata: newMessage.groundingMetadata,
+        activeAgent: undefined,
+        contextLayer: 'doctor-enhancement',
+      };
+
+      return { 
+        message: formattedMessage,
+        sbar: clinicalHandover,
+      };
+    }),
+
+  /**
+   * Mark an intake session as reviewed by the doctor.
+   * Simplified version that takes connectionId instead of sessionId.
+   * Requirements: 9.2, 9.3
+   */
+  markReviewed: doctorProcedure
+    .input(z.object({ connectionId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      if (!ctx.doctor) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Doctor profile not found.',
+        });
+      }
+
+      // Verify the doctor has access to this connection
+      const connection = await ctx.db.query.connections.findFirst({
+        where: and(
+          eq(connections.id, input.connectionId),
+          eq(connections.doctorId, ctx.doctor.id)
+        ),
+      });
+
+      if (!connection) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'You are not authorized to access this connection.',
+        });
+      }
+
+      // Get the most recent intake session for this connection
+      const session = await ctx.db.query.intakeSessions.findFirst({
+        where: eq(intakeSessions.connectionId, input.connectionId),
+        orderBy: [desc(intakeSessions.updatedAt)],
+      });
+
+      if (!session) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'No intake session found for this connection.',
+        });
+      }
+
+      // Update the session status to reviewed
+      const result = await ctx.db
+        .update(intakeSessions)
+        .set({
+          status: 'reviewed',
+          reviewedAt: new Date(),
+          reviewedBy: ctx.user.id,
+          updatedAt: new Date(),
+        })
+        .where(eq(intakeSessions.id, session.id))
+        .returning();
+
+      const updatedSession = result[0];
+      if (!updatedSession) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to update intake session.',
+        });
+      }
+
+      // Log the intake review
+      await auditService.log({
+        userId: ctx.user.id,
+        action: 'intake_reviewed',
+        resourceType: 'intake_session',
+        resourceId: session.id,
+        metadata: {
+          connectionId: input.connectionId,
+          reviewedBy: ctx.user.id,
+        },
+      });
+
+      return {
+        success: true,
+        session: updatedSession,
+      };
+    }),
+
+  /**
+   * Get Uganda Clinical Guidelines (UCG) recommendations for a connection.
+   * Returns recommendations from the most recent intake session's medical data.
+   * Requirements: 3.8
+   */
+  getUCGRecommendations: doctorProcedure
+    .input(z.object({ connectionId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      if (!ctx.doctor) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Doctor profile not found.',
+        });
+      }
+
+      // Verify the doctor has access to this connection
+      const connection = await ctx.db.query.connections.findFirst({
+        where: and(
+          eq(connections.id, input.connectionId),
+          eq(connections.doctorId, ctx.doctor.id)
+        ),
+      });
+
+      if (!connection) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'You are not authorized to access this connection.',
+        });
+      }
+
+      // Get the most recent intake session with UCG recommendations
+      const session = await ctx.db.query.intakeSessions.findFirst({
+        where: eq(intakeSessions.connectionId, input.connectionId),
+        orderBy: [desc(intakeSessions.updatedAt)],
+      });
+
+      if (!session || !session.medicalData) {
+        return { recommendations: null };
+      }
+
+      const medicalData = session.medicalData as MedicalData;
+      const ucgRecommendations = medicalData.ucgRecommendations ?? null;
+
+      return { 
+        recommendations: ucgRecommendations,
+        sessionId: session.id,
+        updatedAt: session.updatedAt,
+      };
     }),
 });

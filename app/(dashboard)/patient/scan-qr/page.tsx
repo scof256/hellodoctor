@@ -1,18 +1,19 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { QrCode, Camera, ArrowLeft, AlertCircle } from 'lucide-react';
+import { QrCode, ArrowLeft, AlertCircle, X, Camera } from 'lucide-react';
+import { Scanner, IDetectedBarcode } from '@yudiel/react-qr-scanner';
 import { useLocalization } from '../../../hooks/useLocalization';
 import { ActionCard } from '../../../components/ActionCard';
 
 /**
  * QR Scan Page Component
  * 
- * Simple approach to QR code scanning:
- * - Display instructions for scanning QR codes
+ * Camera-based QR code scanning:
+ * - Opens camera to scan QR codes
  * - Provide manual doctor code entry field
- * - Add "Open Camera" button that uses device camera
+ * - Handles navigation to doctor connection page
  * 
  * Requirements: 3.1, 3.2, 3.3, 3.4
  */
@@ -22,6 +23,8 @@ export default function ScanQRPage() {
   const [doctorCode, setDoctorCode] = useState('');
   const [error, setError] = useState('');
   const [isValidating, setIsValidating] = useState(false);
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [cameraError, setCameraError] = useState('');
 
   /**
    * Validate doctor slug format
@@ -35,65 +38,213 @@ export default function ScanQRPage() {
   };
 
   /**
+   * Extract doctor slug from scanned QR code URL
+   * Handles various URL formats like:
+   * - https://example.com/connect/dr-john-smith
+   * - /connect/dr-john-smith
+   * - dr-john-smith (just the slug)
+   */
+  const extractDoctorSlug = (scannedValue: string): string | null => {
+    try {
+      // Try to parse as URL first
+      let pathname = scannedValue;
+
+      try {
+        const url = new URL(scannedValue);
+        pathname = url.pathname;
+      } catch {
+        // Not a valid URL, use as-is
+      }
+
+      // Check for /connect/ pattern
+      const connectMatch = pathname.match(/\/connect\/([a-z0-9-]+)/i);
+      if (connectMatch) {
+        return connectMatch[1].toLowerCase();
+      }
+
+      // Check for /d/ pattern (short URL)
+      const shortMatch = pathname.match(/\/d\/([a-z0-9-]+)/i);
+      if (shortMatch) {
+        return shortMatch[1].toLowerCase();
+      }
+
+      // If it looks like just a slug, use it directly
+      const trimmed = scannedValue.trim().toLowerCase();
+      if (validateDoctorSlug(trimmed)) {
+        return trimmed;
+      }
+
+      return null;
+    } catch {
+      return null;
+    }
+  };
+
+  /**
    * Handle manual doctor code submission
    * Requirements: 3.3, 3.4
    */
   const handleSubmitCode = () => {
     setError('');
-    
+
     if (!doctorCode.trim()) {
       setError('Please enter a doctor code');
       return;
     }
 
     const slug = doctorCode.trim().toLowerCase();
-    
+
     if (!validateDoctorSlug(slug)) {
       setError('Invalid doctor code format. Please check and try again.');
       return;
     }
 
     setIsValidating(true);
-    
+
     // Navigate to the doctor's connection page
-    // The connect page will handle validation and show appropriate error if doctor doesn't exist
     router.push(`/connect/${slug}`);
   };
 
   /**
-   * Handle camera-based QR scanning
+   * Handle successful QR code scan
+   * Requirements: 3.1, 3.2
+   */
+  const handleScanSuccess = useCallback((detectedCodes: IDetectedBarcode[]) => {
+    if (detectedCodes.length === 0) return;
+
+    const scannedValue = detectedCodes[0].rawValue;
+    if (!scannedValue) return;
+
+    const slug = extractDoctorSlug(scannedValue);
+
+    if (slug) {
+      setIsScannerOpen(false);
+      router.push(`/connect/${slug}`);
+    } else {
+      setCameraError('Invalid QR code. Please scan a doctor\'s QR code.');
+    }
+  }, [router]);
+
+  /**
+   * Handle camera errors
+   */
+  const handleScanError = useCallback((error: unknown) => {
+    console.error('QR Scanner error:', error);
+    setCameraError(t('home.qrScanUnavailable') || 'Camera not available. Please ensure camera permissions are granted.');
+  }, [t]);
+
+  /**
+   * Open the camera scanner
    * Requirements: 3.1, 3.2
    */
   const handleOpenCamera = async () => {
     setError('');
-    
+    setCameraError('');
+
     try {
       // Check if browser supports camera access
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        setError(t('home.qrScanUnavailable'));
+        setError(t('home.qrScanUnavailable') || 'Camera not available on this device');
         return;
       }
 
-      // Request camera permission
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'environment' } 
+      // Try to get camera permission first
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment' }
       });
-      
-      // Stop the stream immediately (we just wanted to check permission)
+
+      // Stop the test stream
       stream.getTracks().forEach(track => track.stop());
-      
-      // For now, show a message that camera scanning will be implemented
-      // In a full implementation, this would open a camera view with QR detection
-      setError('Camera scanning will be available soon. Please use manual entry for now.');
-      
+
+      // Open scanner
+      setIsScannerOpen(true);
+
     } catch (err) {
-      // Camera permission denied or not available
-      setError(t('home.qrScanUnavailable'));
+      console.error('Camera permission error:', err);
+      setError(t('home.qrScanUnavailable') || 'Camera permission denied. Please allow camera access to scan QR codes.');
     }
+  };
+
+  /**
+   * Close the scanner
+   */
+  const handleCloseScanner = () => {
+    setIsScannerOpen(false);
+    setCameraError('');
   };
 
   return (
     <div className="min-h-screen bg-gray-50 p-4">
+      {/* Full-screen QR Scanner Modal */}
+      {isScannerOpen && (
+        <div className="fixed inset-0 z-50 bg-black">
+          {/* Scanner Header */}
+          <div className="absolute top-0 left-0 right-0 z-10 bg-gradient-to-b from-black/70 to-transparent p-4">
+            <div className="flex items-center justify-between">
+              <button
+                onClick={handleCloseScanner}
+                className="flex items-center gap-2 text-white hover:text-gray-300 transition-colors"
+              >
+                <X className="w-6 h-6" />
+                <span className="font-medium">Close</span>
+              </button>
+              <h2 className="text-white font-semibold">Scan QR Code</h2>
+              <div className="w-16" /> {/* Spacer for centering */}
+            </div>
+          </div>
+
+          {/* Scanner */}
+          <div className="absolute inset-0 flex items-center justify-center">
+            <Scanner
+              onScan={handleScanSuccess}
+              onError={handleScanError}
+              constraints={{
+                facingMode: 'environment'
+              }}
+              styles={{
+                container: {
+                  width: '100%',
+                  height: '100%',
+                },
+                video: {
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                }
+              }}
+              components={{
+                audio: false,
+                torch: true,
+              }}
+            />
+          </div>
+
+          {/* Scanner Frame Overlay */}
+          <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+            <div className="w-64 h-64 border-2 border-white/50 rounded-2xl relative">
+              {/* Corner markers */}
+              <div className="absolute -top-0.5 -left-0.5 w-8 h-8 border-t-4 border-l-4 border-[#25D366] rounded-tl-lg" />
+              <div className="absolute -top-0.5 -right-0.5 w-8 h-8 border-t-4 border-r-4 border-[#25D366] rounded-tr-lg" />
+              <div className="absolute -bottom-0.5 -left-0.5 w-8 h-8 border-b-4 border-l-4 border-[#25D366] rounded-bl-lg" />
+              <div className="absolute -bottom-0.5 -right-0.5 w-8 h-8 border-b-4 border-r-4 border-[#25D366] rounded-br-lg" />
+            </div>
+          </div>
+
+          {/* Scanner Instructions */}
+          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-6">
+            <p className="text-white text-center">
+              Point your camera at the doctor's QR code
+            </p>
+            {cameraError && (
+              <div className="mt-4 flex items-center justify-center gap-2 text-red-400">
+                <AlertCircle className="w-5 h-5" />
+                <span className="text-sm">{cameraError}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Header with Back Button */}
       <div className="mb-6">
         <button
@@ -107,12 +258,12 @@ export default function ScanQRPage() {
 
       {/* Main Content - ActionCard with auto-pulse to draw attention */}
       <div className="max-w-md mx-auto">
-        {/* Attention-grabbing card with auto-pulse */}
+        {/* Camera Open Button */}
         <div className="mb-6">
           <ActionCard
-            title={t('home.scanQR')}
-            subtitle={t('home.scanQRSubtitle')}
-            icon={<QrCode className="w-10 h-10" />}
+            title={t('home.scanQR') || 'Scan QR Code'}
+            subtitle={t('home.scanQRSubtitle') || 'Connect with a new doctor'}
+            icon={<Camera className="w-10 h-10" />}
             iconColor="#25D366"
             pulseMode="auto"
             onTap={handleOpenCamera}
@@ -172,7 +323,7 @@ export default function ScanQRPage() {
             className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#25D366] focus:border-transparent outline-none transition-all mb-3"
             disabled={isValidating}
           />
-          
+
           {/* Error Message */}
           {error && (
             <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg mb-3">

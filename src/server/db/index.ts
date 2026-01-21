@@ -12,8 +12,9 @@ const client =
   postgres(connectionString, {
     prepare: false,
     idle_timeout: 20,
-    connect_timeout: 30,
+    connect_timeout: 60, // Increased for Neon cold starts
     keep_alive: 60,
+    max: 1, // Limit connections in development
   });
 
 if (process.env.NODE_ENV !== "production") {

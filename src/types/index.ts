@@ -76,6 +76,7 @@ export interface MedicalData {
   ucgRecommendations: string | null;
   bookingStatus: 'collecting' | 'ready' | 'booked';
   appointmentDate?: string;
+  doctorNotes?: string; // Doctor enhancements (test results, exam findings, notes)
 }
 
 // Doctor's clinical reasoning
@@ -98,6 +99,9 @@ export interface AgentResponse {
   activeAgent: AgentRole;
 }
 
+// Context layer for separating patient intake from doctor enhancements
+export type ContextLayer = 'patient-intake' | 'doctor-enhancement';
+
 // Chat Message
 export interface Message {
   id: string;
@@ -107,6 +111,7 @@ export interface Message {
   timestamp: Date;
   groundingMetadata?: unknown;
   activeAgent?: AgentRole;
+  contextLayer?: ContextLayer; // Separates patient-generated intake from doctor enhancements
 }
 
 // Message status for optimistic updates and retry functionality
