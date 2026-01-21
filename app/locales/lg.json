@@ -23,7 +23,7 @@
     "messages": "Obubaka",
     "profile": "Ebikukwata",
     "settings": "Settings",
-    "appointments": "Okulaba Omusawo",
+    "appointments": "Apoyitimenti",
     "intake": "Foomu y'Obujjanjabi",
     "back": "Ddayo"
   },
@@ -36,8 +36,8 @@
     "welcome": "Tukusanyukidde",
     "startIntake": "Tandika Foomu y'Obujjanjabi",
     "continueIntake": "Genda mu maaso ({{progress}}% ewedde)",
-    "bookAppointment": "Funa Omusolo",
-    "viewAppointment": "Laba Omusolo",
+    "bookAppointment": "Funa Apoyitimenti",
+    "viewAppointment": "Laba Apoyitimenti",
     "noDoctor": "Funa omusawo okusobola okutandika",
     "nextSteps": "Bino bye weetaaga okukola",
     "getStarted": "Funa omusawo okutandika",
@@ -86,7 +86,7 @@
     "invalidBP": "Wandiika emiwendo gya puleesa egituufu"
   },
   "booking": {
-    "title": "Funa Omusolo",
+    "title": "Funa Apoyitimenti",
     "selectWeek": "Londa Wiiki",
     "thisWeek": "Wiiki Eno",
     "nextWeek": "Wiiki Ejja",
@@ -95,14 +95,14 @@
     "morning": "Enkya",
     "afternoon": "Ttuntu",
     "evening": "Akawungeezi",
-    "confirmBooking": "Kakasa Omusolo",
-    "appointmentWith": "Omusolo ne Dr. {{name}}",
+    "confirmBooking": "Kakasa Apoyitimenti",
+    "appointmentWith": "Apoyitimenti ne Dr. {{name}}",
     "date": "Olunaku",
     "time": "Obudde",
     "location": "Ekifo",
-    "success": "Omusolo gutegekeddwa bulungi!",
+    "success": "Apoyitimenti etegekeddwa bulungi!",
     "unavailable": "Tewali",
-    "intakeCompleteMessage": "Foomu y'obujjanjabi ewedde. Funa omusolo ne {{name}}"
+    "intakeCompleteMessage": "Foomu y'obujjanjabi ewedde. Funa apoyitimenti ne {{name}}"
   },
   "messages": {
     "title": "Obubaka",
@@ -129,7 +129,7 @@
     "english": "Lungereza",
     "luganda": "Luganda",
     "swahili": "Swahili",
-    "appointmentReminders": "Ebijjukiza Emisolo",
+    "appointmentReminders": "Ebijjukiza Apoyitimenti",
     "messageNotifications": "Notifications z'Obubaka",
     "enableVoice": "Kkiriza Eddoboozi"
   },
@@ -138,7 +138,7 @@
     "step1Description": "Scanninga QR code oba kozesa link okufuna omusawo wo",
     "step2Title": "Jjuza Foomu y'Obujjanjabi",
     "step2Description": "Ddamu ebibuuzo ebyangu ebikwata ku bulamu bwo",
-    "step3Title": "Funa Omusolo",
+    "step3Title": "Funa Apoyitimenti",
     "step3Description": "Londa obudde obukukwatira"
   },
   "help": {
@@ -169,7 +169,7 @@
   "confirmation": {
     "connected": "Oyungibbwa Dr. {{name}}!",
     "intakeComplete": "Foomu y'obujjanjabi ewedde!",
-    "appointmentBooked": "Omusolo gutegekeddwa!",
+    "appointmentBooked": "Apoyitimenti etegekeddwa!",
     "messageSent": "Obubaka buwerezebbwa!"
   },
   "voice": {
