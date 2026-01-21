@@ -170,7 +170,7 @@ export class GeminiService {
         config: { temperature: 0.1 }
       });
       
-      const text = result.text?.trim().replace(/['"]/g, '') || '';
+      const text = result.text ? result.text.trim().replace(/['"]/g, '') : '';
       
       if (VALID_AGENT_ROLES.includes(text as AgentRole)) {
         return text as AgentRole;
