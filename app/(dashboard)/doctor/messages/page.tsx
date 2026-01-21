@@ -220,9 +220,6 @@ function DoctorMessagesContent() {
   const [searchQuery, setSearchQuery] = useState('');
   const [newMessage, setNewMessage] = useState('');
   const [showMobileChat, setShowMobileChat] = useState(!!initialConnectionId);
-  const [optimisticMessages, setOptimisticMessages] = useState<Message[]>([]);
-  const optimisticMessageIdRef = useRef<string | null>(null);
-  const optimisticMessageTextRef = useRef<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastMarkAsReadAttemptRef = useRef<Record<string, number>>({});
 
@@ -253,26 +250,8 @@ function DoctorMessagesContent() {
   // Send message mutation
   const sendMessage = api.message.send.useMutation({
     onSuccess: () => {
-      const optimisticId = optimisticMessageIdRef.current;
-      if (optimisticId) {
-        setOptimisticMessages((prev) => prev.filter((m) => m.id !== optimisticId));
-      }
-      optimisticMessageIdRef.current = null;
-      optimisticMessageTextRef.current = null;
+      setNewMessage('');
       utils.message.getConversation.invalidate({ connectionId: selectedConnectionId! });
-      utils.message.getConversations.invalidate();
-    },
-    onError: () => {
-      const optimisticId = optimisticMessageIdRef.current;
-      const optimisticText = optimisticMessageTextRef.current;
-      if (optimisticId) {
-        setOptimisticMessages((prev) => prev.filter((m) => m.id !== optimisticId));
-      }
-      optimisticMessageIdRef.current = null;
-      optimisticMessageTextRef.current = null;
-      if (optimisticText) {
-        setNewMessage(optimisticText);
-      }
     },
   });
 
@@ -284,10 +263,7 @@ function DoctorMessagesContent() {
     },
   });
 
-  const serverMessages = messagesData?.messages ?? [];
-  const messages = selectedConnectionId
-    ? [...serverMessages, ...optimisticMessages.filter((m) => m.senderId === currentUserId)]
-    : serverMessages;
+  const messages = messagesData?.messages ?? [];
 
   // Build conversations list from the getConversations endpoint
   const conversations: Conversation[] = (conversationsData?.conversations ?? []).map(conv => ({
@@ -347,32 +323,10 @@ function DoctorMessagesContent() {
 
   const handleSendMessage = () => {
     if (!newMessage.trim() || !selectedConnectionId) return;
-
-    const content = newMessage.trim();
-    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-    optimisticMessageIdRef.current = tempId;
-    optimisticMessageTextRef.current = content;
-
-    if (currentUserId) {
-      const optimistic: Message = {
-        id: tempId,
-        content,
-        senderId: currentUserId,
-        createdAt: new Date(),
-        isRead: false,
-        sender: {
-          id: currentUserId,
-          firstName: userData?.firstName ?? null,
-          lastName: userData?.lastName ?? null,
-          imageUrl: userData?.imageUrl ?? null,
-          primaryRole: userData?.primaryRole ?? 'doctor',
-        },
-      };
-      setOptimisticMessages((prev) => [...prev, optimistic]);
-    }
-
-    setNewMessage('');
-    sendMessage.mutate({ connectionId: selectedConnectionId, content });
+    sendMessage.mutate({
+      connectionId: selectedConnectionId,
+      content: newMessage.trim(),
+    });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -385,9 +339,6 @@ function DoctorMessagesContent() {
   const handleSelectConversation = (connectionId: string) => {
     setSelectedConnectionId(connectionId);
     setShowMobileChat(true);
-    setOptimisticMessages([]);
-    optimisticMessageIdRef.current = null;
-    optimisticMessageTextRef.current = null;
   };
 
   if (conversationsLoading) {

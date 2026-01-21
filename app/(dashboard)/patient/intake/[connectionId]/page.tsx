@@ -43,8 +43,6 @@ export default function PatientIntakePage() {
   const [thought, setThought] = useState<DoctorThought>(INITIAL_THOUGHT);
   const [completeness, setCompleteness] = useState(0);
   const [isSending, setIsSending] = useState(false);
-  const optimisticMessageIdRef = useRef<string | null>(null);
-  const createSessionRetryRef = useRef(0);
 
   const { data: notificationData } = api.notification.getUnreadCount.useQuery(undefined, {
     refetchInterval: 30000,
@@ -54,27 +52,8 @@ export default function PatientIntakePage() {
   const unreadCount = notificationData?.count ?? 0;
   const createSession = api.intake.create.useMutation({
     onSuccess: (s) => {
-      createSessionRetryRef.current = 0;
       setSessionId(s.id);
       router.replace(`/patient/intake/${connectionId}?sessionId=${s.id}`);
-    },
-    onError: (err) => {
-      const code = err.data?.code;
-      if (code === 'NOT_FOUND' && createSessionRetryRef.current < 3) {
-        createSessionRetryRef.current += 1;
-        const delayMs = 500 * Math.pow(2, createSessionRetryRef.current - 1);
-        window.setTimeout(() => {
-          createSession.mutate({ connectionId });
-        }, delayMs);
-        return;
-      }
-
-      addToast({
-        type: 'error',
-        title: 'Unable to start intake',
-        message: err.message || 'Please try again.',
-        duration: 5000,
-      });
     },
   });
 
@@ -107,64 +86,20 @@ export default function PatientIntakePage() {
     { enabled: !!resolvedSessionId }
   );
 
-  const { data: existingSessionsData, isLoading: existingSessionsLoading, error: existingSessionsError, refetch: refetchExistingSessions } = api.intake.getMyIntakeSessions.useQuery(
+  const { data: existingSessionsData, isLoading: existingSessionsLoading } = api.intake.getMyIntakeSessions.useQuery(
     { connectionId },
-    {
-      enabled: !resolvedSessionId,
-      retry: (failureCount, err) => {
-        if (err.data?.code !== 'NOT_FOUND') return false;
-        return failureCount < 3;
-      },
-      retryDelay: (attemptIndex) => 500 * Math.pow(2, attemptIndex),
-    }
+    { enabled: !resolvedSessionId }
   );
   const sendMessage = api.intake.sendMessage.useMutation({
     onSuccess: (result) => {
-      setMessages((prev) => {
-        let next = prev;
-        const optimisticId = optimisticMessageIdRef.current;
-
-        if (result.userMessage) {
-          if (optimisticId) {
-            const idx = prev.findIndex((m) => m.id === optimisticId);
-            if (idx >= 0) {
-              next = [...prev];
-              next[idx] = result.userMessage as Message;
-            } else {
-              next = [...prev, result.userMessage as Message];
-            }
-          } else {
-            next = [...prev, result.userMessage as Message];
-          }
-        }
-
-        if (result.aiMessage) {
-          next = [...next, result.aiMessage as Message];
-        }
-
-        return next;
-      });
-
+      if (result.userMessage) setMessages((prev) => [...prev, result.userMessage as Message]);
+      if (result.aiMessage) setMessages((prev) => [...prev, result.aiMessage as Message]);
       if (result.updatedMedicalData) setMedicalData(result.updatedMedicalData);
       if (result.thought) setThought(result.thought);
       setCompleteness(result.completeness);
-      optimisticMessageIdRef.current = null;
       setIsSending(false);
     },
-    onError: (err) => {
-      const optimisticId = optimisticMessageIdRef.current;
-      if (optimisticId) {
-        setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
-      }
-      optimisticMessageIdRef.current = null;
-      setIsSending(false);
-      addToast({
-        type: 'error',
-        title: 'Message failed',
-        message: err.message || 'Unable to send message. Please try again.',
-        duration: 4000,
-      });
-    },
+    onError: () => setIsSending(false),
   });
 
   const currentStage: IntakeStage = useMemo(() => {
@@ -223,84 +158,16 @@ export default function PatientIntakePage() {
     }
   }, [sessionData]);
   const handleSendMessage = useCallback((text: string, imageUrls: string[]) => {
-    if (!resolvedSessionId) {
-      addToast({
-        type: 'error',
-        title: 'Chat is still loading',
-        message: 'Please wait a moment and try again.',
-        duration: 3500,
-      });
-      return;
-    }
-    if (isSending) return;
-
-    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-    optimisticMessageIdRef.current = tempId;
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: tempId,
-        role: 'user',
-        text,
-        images: imageUrls.length > 0 ? imageUrls : undefined,
-        timestamp: new Date(),
-      },
-    ]);
-
+    if (!resolvedSessionId || isSending) return;
     setIsSending(true);
     sendMessage.mutate({ sessionId: resolvedSessionId, content: text, images: imageUrls.length > 0 ? imageUrls : undefined });
-  }, [resolvedSessionId, isSending, sendMessage, addToast]);
+  }, [resolvedSessionId, isSending, sendMessage]);
   const handleTopicTrigger = useCallback((field: keyof MedicalData) => {
     const prompts: Record<string, string> = { chiefComplaint: "What brings you in today?", hpi: "Tell me more about when this started.", medications: "What medications are you taking?", allergies: "Do you have any allergies?", pastMedicalHistory: "What conditions have you had?", familyHistory: "Any family medical history?", socialHistory: "Tell me about your lifestyle." };
     const prompt = prompts[field];
     if (prompt && resolvedSessionId) handleSendMessage(prompt, []);
   }, [resolvedSessionId, handleSendMessage]);
-  if (!resolvedSessionId && existingSessionsError) {
-    return (
-      <div className="flex items-center justify-center h-full bg-slate-50">
-        <div className="text-center max-w-md px-4">
-          <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-          <h2 className="text-xl font-bold text-slate-800 mb-2">Unable to Load Intake</h2>
-          <p className="text-slate-600 mb-4">{existingSessionsError.message}</p>
-          <div className="flex items-center justify-center gap-3">
-            <button
-              type="button"
-              onClick={() => refetchExistingSessions()}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-medical-600 text-white rounded-lg hover:bg-medical-700"
-            >
-              Retry
-            </button>
-            <Link
-              href="/patient"
-              className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              Back
-            </Link>
-          </div>
-        </div>
-      </div>
-    );
-  }
-  if (!resolvedSessionId && (existingSessionsLoading || createSession.isPending || !existingSessionsData)) {
-    return (
-      <div className="flex items-center justify-center h-full bg-slate-50">
-        <div className="w-full max-w-3xl p-4">
-          <div className="bg-white rounded-lg shadow-sm p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-slate-200 animate-pulse"></div>
-              <div className="flex-1">
-                <div className="h-4 w-32 bg-slate-200 rounded animate-pulse mb-2"></div>
-                <div className="h-3 w-24 bg-slate-200 rounded animate-pulse"></div>
-              </div>
-            </div>
-            <MessageListSkeleton count={3} />
-          </div>
-        </div>
-      </div>
-    );
-  }
-  if (resolvedSessionId && sessionLoading) {
+  if (existingSessionsLoading || (resolvedSessionId && sessionLoading)) {
     return (
       <div className="flex items-center justify-center h-full bg-slate-50">
         <div className="w-full max-w-3xl p-4">
