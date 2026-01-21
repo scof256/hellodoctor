@@ -182,7 +182,7 @@ export class GeminiService {
         config: { temperature: 0.1 }
       });
       
-      const text = result.text?.trim().replace(/['"]/g, '');
+      const text = result.text ? result.text.trim().replace(/['"]/g, '') : '';
       const validRoles: AgentRole[] = ['Triage', 'ClinicalInvestigator', 'RecordsClerk', 'HistorySpecialist', 'HandoverSpecialist'];
       
       // Validation with fallback
