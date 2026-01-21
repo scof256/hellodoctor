@@ -5,8 +5,13 @@ import { TRPCReactProvider } from '@/trpc/react';
 import { ModeProvider } from './contexts/ModeContext';
 import { I18nProvider } from './components/I18nProvider';
 import { OfflineBanner } from './components/OfflineBanner';
+import { validateEnvironment } from '@/lib/env-validation';
 import './globals.css';
 import '@stream-io/video-react-sdk/dist/css/styles.css';
+
+// Validate environment variables at module load time
+// This ensures build fails if required variables are missing (Requirements 8.1, 8.5)
+validateEnvironment();
 
 const inter = Inter({ subsets: ['latin'] });
 

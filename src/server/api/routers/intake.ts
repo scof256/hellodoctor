@@ -215,162 +215,229 @@ export const intakeRouter = createTRPCRouter({
   getSession: protectedProcedure
     .input(getSessionSchema)
     .query(async ({ ctx, input }) => {
-      const startTime = process.env.NODE_ENV === 'development' ? performance.now() : 0;
-
-      // Create aliased table references for doctor and patient users
-      const doctorUsers = alias(users, 'doctorUsers');
-      const patientUsers = alias(users, 'patientUsers');
-
-      // Query 1: Session with all related data via JOINs (Requirements: 1.1, 1.3)
-      const sessionWithData = await ctx.db
-        .select({
-          // Session fields
-          id: intakeSessions.id,
-          connectionId: intakeSessions.connectionId,
-          name: intakeSessions.name,
-          status: intakeSessions.status,
-          medicalData: intakeSessions.medicalData,
-          clinicalHandover: intakeSessions.clinicalHandover,
-          doctorThought: intakeSessions.doctorThought,
-          completeness: intakeSessions.completeness,
-          currentAgent: intakeSessions.currentAgent,
-          startedAt: intakeSessions.startedAt,
-          completedAt: intakeSessions.completedAt,
-          reviewedAt: intakeSessions.reviewedAt,
-          reviewedBy: intakeSessions.reviewedBy,
-          createdAt: intakeSessions.createdAt,
-          updatedAt: intakeSessions.updatedAt,
-          // Connection fields
-          connectionStatus: connections.status,
-          patientId: connections.patientId,
-          doctorId: connections.doctorId,
-          // Doctor fields
-          doctorSpecialty: doctors.specialty,
-          doctorClinicName: doctors.clinicName,
-          doctorUserId: doctors.userId,
-          // Doctor user fields
-          doctorFirstName: doctorUsers.firstName,
-          doctorLastName: doctorUsers.lastName,
-          doctorImageUrl: doctorUsers.imageUrl,
-          // Patient fields
-          patientUserId: patients.userId,
-          // Patient user fields
-          patientFirstName: patientUsers.firstName,
-          patientLastName: patientUsers.lastName,
-          patientImageUrl: patientUsers.imageUrl,
-        })
-        .from(intakeSessions)
-        .innerJoin(connections, eq(intakeSessions.connectionId, connections.id))
-        .innerJoin(doctors, eq(connections.doctorId, doctors.id))
-        .innerJoin(doctorUsers, eq(doctors.userId, doctorUsers.id))
-        .innerJoin(patients, eq(connections.patientId, patients.id))
-        .innerJoin(patientUsers, eq(patients.userId, patientUsers.id))
-        .where(eq(intakeSessions.id, input.sessionId))
-        .limit(1);
-
-      const row = sessionWithData[0];
-
-      if (!row) {
-        throw new TRPCError({
-          code: 'NOT_FOUND',
-          message: 'Intake session not found.',
+      const startTime = Date.now();
+      
+      try {
+        // Log query start (Requirements: 3.1, 3.2)
+        console.log('[intake.getSession] Starting', {
+          timestamp: new Date().toISOString(),
+          sessionId: input.sessionId,
+          userId: ctx.user.id,
         });
-      }
 
-      // Access control check using JOIN result (Requirements: 2.1, 2.2, 2.3, 2.4)
-      const isPatientInConnection = row.patientUserId === ctx.user.id;
-      const isDoctorInConnection = row.doctorUserId === ctx.user.id;
-      const isSuperAdmin = ctx.user.primaryRole === 'super_admin';
+        const perfStartTime = process.env.NODE_ENV === 'development' ? performance.now() : 0;
 
-      if (!isPatientInConnection && !isDoctorInConnection && !isSuperAdmin) {
-        throw new TRPCError({
-          code: 'FORBIDDEN',
-          message: 'You are not authorized to view this intake session.',
-        });
-      }
+        // Create aliased table references for doctor and patient users
+        const doctorUsers = alias(users, 'doctorUsers');
+        const patientUsers = alias(users, 'patientUsers');
 
-      // Query 2: Get all messages for this session (Requirements: 1.2)
-      const messages = await ctx.db.query.chatMessages.findMany({
-        where: eq(chatMessages.sessionId, input.sessionId),
-        orderBy: [chatMessages.createdAt],
-      });
+        // Query 1: Session with all related data via JOINs (Requirements: 1.1, 1.3)
+        const sessionWithData = await ctx.db
+          .select({
+            // Session fields
+            id: intakeSessions.id,
+            connectionId: intakeSessions.connectionId,
+            name: intakeSessions.name,
+            status: intakeSessions.status,
+            medicalData: intakeSessions.medicalData,
+            clinicalHandover: intakeSessions.clinicalHandover,
+            doctorThought: intakeSessions.doctorThought,
+            completeness: intakeSessions.completeness,
+            currentAgent: intakeSessions.currentAgent,
+            startedAt: intakeSessions.startedAt,
+            completedAt: intakeSessions.completedAt,
+            reviewedAt: intakeSessions.reviewedAt,
+            reviewedBy: intakeSessions.reviewedBy,
+            createdAt: intakeSessions.createdAt,
+            updatedAt: intakeSessions.updatedAt,
+            // Connection fields
+            connectionStatus: connections.status,
+            patientId: connections.patientId,
+            doctorId: connections.doctorId,
+            // Doctor fields
+            doctorSpecialty: doctors.specialty,
+            doctorClinicName: doctors.clinicName,
+            doctorUserId: doctors.userId,
+            // Doctor user fields
+            doctorFirstName: doctorUsers.firstName,
+            doctorLastName: doctorUsers.lastName,
+            doctorImageUrl: doctorUsers.imageUrl,
+            // Patient fields
+            patientUserId: patients.userId,
+            // Patient user fields
+            patientFirstName: patientUsers.firstName,
+            patientLastName: patientUsers.lastName,
+            patientImageUrl: patientUsers.imageUrl,
+          })
+          .from(intakeSessions)
+          .innerJoin(connections, eq(intakeSessions.connectionId, connections.id))
+          .innerJoin(doctors, eq(connections.doctorId, doctors.id))
+          .innerJoin(doctorUsers, eq(doctors.userId, doctorUsers.id))
+          .innerJoin(patients, eq(connections.patientId, patients.id))
+          .innerJoin(patientUsers, eq(patients.userId, patientUsers.id))
+          .where(eq(intakeSessions.id, input.sessionId))
+          .limit(1);
 
-      // Transform messages to the expected format
-      const formattedMessages: Message[] = messages.map((msg) => ({
-        id: msg.id,
-        role: msg.role as 'user' | 'model' | 'doctor',
-        text: msg.content,
-        images: msg.images ?? undefined,
-        timestamp: msg.createdAt,
-        groundingMetadata: msg.groundingMetadata,
-        activeAgent: msg.activeAgent as Message['activeAgent'],
-      }));
+        const row = sessionWithData[0];
 
-      // Log query timing in development mode (Requirements: 4.1, 4.3)
-      if (process.env.NODE_ENV === 'development') {
-        const endTime = performance.now();
-        const duration = endTime - startTime;
-        console.log(`[intake.getSession] Query completed in ${duration.toFixed(2)}ms`);
-        if (duration > 500) {
-          console.warn(`[intake.getSession] Performance warning: Query took ${duration.toFixed(2)}ms (>500ms threshold)`);
+        if (!row) {
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message: 'Intake session not found.',
+          });
         }
+
+        // Access control check using JOIN result (Requirements: 2.1, 2.2, 2.3, 2.4)
+        const isPatientInConnection = row.patientUserId === ctx.user.id;
+        const isDoctorInConnection = row.doctorUserId === ctx.user.id;
+        const isSuperAdmin = ctx.user.primaryRole === 'super_admin';
+
+        if (!isPatientInConnection && !isDoctorInConnection && !isSuperAdmin) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: 'You are not authorized to view this intake session.',
+          });
+        }
+
+        // Query 2: Get all messages for this session (Requirements: 1.2)
+        const messages = await ctx.db.query.chatMessages.findMany({
+          where: eq(chatMessages.sessionId, input.sessionId),
+          orderBy: [chatMessages.createdAt],
+        });
+
+        // Transform messages to the expected format
+        const formattedMessages: Message[] = messages.map((msg) => ({
+          id: msg.id,
+          role: msg.role as 'user' | 'model' | 'doctor',
+          text: msg.content,
+          images: msg.images ?? undefined,
+          timestamp: msg.createdAt,
+          groundingMetadata: msg.groundingMetadata,
+          activeAgent: msg.activeAgent as Message['activeAgent'],
+        }));
+
+        // Log query timing in development mode (Requirements: 4.1, 4.3)
+        if (process.env.NODE_ENV === 'development') {
+          const endTime = performance.now();
+          const duration = endTime - perfStartTime;
+          console.log(`[intake.getSession] Query completed in ${duration.toFixed(2)}ms`);
+          if (duration > 500) {
+            console.warn(`[intake.getSession] Performance warning: Query took ${duration.toFixed(2)}ms (>500ms threshold)`);
+          }
+        }
+
+        // Apply backward compatibility defaults for new fields (Requirements: 7.1, 7.2, 7.3)
+        const rawMedicalData = row.medicalData as MedicalData | null;
+        let medicalData = rawMedicalData;
+        
+        // Apply default values for new fields if they're missing
+        if (medicalData) {
+          medicalData = {
+            ...INITIAL_MEDICAL_DATA,
+            ...medicalData,
+            // Ensure historyCheckCompleted has a default value
+            historyCheckCompleted: medicalData.historyCheckCompleted ?? false,
+            // Ensure vitalsData exists with proper defaults
+            vitalsData: medicalData.vitalsData ?? {
+              ...INITIAL_MEDICAL_DATA.vitalsData,
+              vitalsStageCompleted: true, // Skip vitals for existing sessions without vitals data
+            },
+          };
+        }
+        
+        // Redact sensitive fields for patients
+        if (isPatientInConnection && medicalData) {
+          medicalData = { ...medicalData, clinicalHandover: null, ucgRecommendations: null };
+        }
+        
+        // Handle missing doctorThought gracefully
+        const doctorThought = row.doctorThought as DoctorThought | null ?? null;
+
+        const clinicalHandover = isPatientInConnection
+          ? null
+          : (row.clinicalHandover as SBAR | null);
+
+        // Log query completion (Requirements: 3.1, 3.2)
+        const duration = Date.now() - startTime;
+        console.log('[intake.getSession] Completed', {
+          timestamp: new Date().toISOString(),
+          sessionId: input.sessionId,
+          userId: ctx.user.id,
+          duration,
+          messageCount: formattedMessages.length,
+          success: true,
+        });
+
+        // Transform JOIN result to match existing response structure (Requirements: 1.4, 3.1, 3.2, 3.3, 3.4)
+        return {
+          session: {
+            id: row.id,
+            connectionId: row.connectionId,
+            name: row.name,
+            status: row.status,
+            medicalData,
+            clinicalHandover,
+            doctorThought,
+            completeness: row.completeness,
+            currentAgent: row.currentAgent,
+            startedAt: row.startedAt,
+            completedAt: row.completedAt,
+            reviewedAt: row.reviewedAt,
+            reviewedBy: row.reviewedBy,
+            createdAt: row.createdAt,
+            updatedAt: row.updatedAt,
+          },
+          messages: formattedMessages,
+          connection: {
+            id: row.connectionId,
+            status: row.connectionStatus,
+            patientId: row.patientId,
+            doctorId: row.doctorId,
+            doctor: {
+              id: row.doctorId,
+              specialty: row.doctorSpecialty,
+              clinicName: row.doctorClinicName,
+              user: {
+                firstName: row.doctorFirstName,
+                lastName: row.doctorLastName,
+                imageUrl: row.doctorImageUrl,
+              },
+            },
+            patient: {
+              id: row.patientId,
+              user: {
+                firstName: row.patientFirstName,
+                lastName: row.patientLastName,
+                imageUrl: row.patientImageUrl,
+              },
+            },
+          },
+          userRole: isPatientInConnection ? ('patient' as const) : ('doctor' as const),
+        };
+      } catch (error) {
+        // Log error with full context (Requirements: 3.1, 3.2, 4.1, 4.2)
+        const duration = Date.now() - startTime;
+        console.error('[intake.getSession] Error', {
+          timestamp: new Date().toISOString(),
+          sessionId: input.sessionId,
+          userId: ctx.user.id,
+          error: error instanceof Error ? error.message : 'Unknown error',
+          stack: error instanceof Error ? error.stack : undefined,
+          duration,
+        });
+
+        // Re-throw TRPCError instances as-is
+        if (error instanceof TRPCError) {
+          throw error;
+        }
+
+        // Wrap other errors with user-friendly message
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to retrieve intake session. Please try again.',
+          cause: error,
+        });
       }
-
-      const rawMedicalData = row.medicalData as MedicalData | null;
-      const medicalData = isPatientInConnection && rawMedicalData
-        ? { ...rawMedicalData, clinicalHandover: null, ucgRecommendations: null }
-        : rawMedicalData;
-
-      const clinicalHandover = isPatientInConnection
-        ? null
-        : (row.clinicalHandover as SBAR | null);
-
-      // Transform JOIN result to match existing response structure (Requirements: 1.4, 3.1, 3.2, 3.3, 3.4)
-      return {
-        session: {
-          id: row.id,
-          connectionId: row.connectionId,
-          name: row.name,
-          status: row.status,
-          medicalData,
-          clinicalHandover,
-          doctorThought: row.doctorThought as DoctorThought | null,
-          completeness: row.completeness,
-          currentAgent: row.currentAgent,
-          startedAt: row.startedAt,
-          completedAt: row.completedAt,
-          reviewedAt: row.reviewedAt,
-          reviewedBy: row.reviewedBy,
-          createdAt: row.createdAt,
-          updatedAt: row.updatedAt,
-        },
-        messages: formattedMessages,
-        connection: {
-          id: row.connectionId,
-          status: row.connectionStatus,
-          patientId: row.patientId,
-          doctorId: row.doctorId,
-          doctor: {
-            id: row.doctorId,
-            specialty: row.doctorSpecialty,
-            clinicName: row.doctorClinicName,
-            user: {
-              firstName: row.doctorFirstName,
-              lastName: row.doctorLastName,
-              imageUrl: row.doctorImageUrl,
-            },
-          },
-          patient: {
-            id: row.patientId,
-            user: {
-              firstName: row.patientFirstName,
-              lastName: row.patientLastName,
-              imageUrl: row.patientImageUrl,
-            },
-          },
-        },
-        userRole: isPatientInConnection ? ('patient' as const) : ('doctor' as const),
-      };
     }),
 
   /**
@@ -1321,7 +1388,18 @@ export const intakeRouter = createTRPCRouter({
   sendMessage: protectedProcedure
     .input(sendMessageSchema)
     .mutation(async ({ ctx, input }) => {
-      console.log('[intake.sendMessage] Starting mutation for session:', input.sessionId);
+      // Track start time for duration logging (Requirement 3.1)
+      const startTime = Date.now();
+      
+      // Log request start with context (Requirement 3.2)
+      console.log('[intake.sendMessage] Request started', {
+        timestamp: new Date().toISOString(),
+        sessionId: input.sessionId,
+        userId: ctx.user.id,
+        contentLength: input.content.length,
+        hasImages: !!input.images && input.images.length > 0,
+        imageCount: input.images?.length ?? 0,
+      });
       
       try {
         // --- DEDUPLICATION CHECK (Requirement 6.4) ---
@@ -1695,24 +1773,67 @@ export const intakeRouter = createTRPCRouter({
       };
       // --- END BUILD TRACKING STATE ---
       
-      // Send to AI and get response
-      const { response: aiResponse, groundingMetadata } = await sendAIMessage(
-        messageHistory,
-        currentMedicalData,
-        mode,
-        trackingState
-      );
+      // Send to AI and get response with timeout and fallback handling (Requirements: 6.1, 6.2, 6.3)
+      let aiResponse;
+      let groundingMetadata;
+      let aiServiceError: Error | null = null;
       
-      console.log('[intake.sendMessage] AI response received:', {
-        hasReply: !!aiResponse.reply,
-        replyLength: aiResponse.reply?.length,
-        activeAgent: aiResponse.activeAgent,
-      });
+      try {
+        // Wrap AI service call with 25-second timeout (Requirement 6.2)
+        const aiPromise = sendAIMessage(
+          messageHistory,
+          currentMedicalData,
+          mode,
+          trackingState
+        );
+        
+        const timeoutPromise = new Promise<never>((_, reject) => 
+          setTimeout(() => reject(new Error('AI service timeout after 25 seconds')), 25000)
+        );
+        
+        const result = await Promise.race([aiPromise, timeoutPromise]);
+        aiResponse = result.response;
+        groundingMetadata = result.groundingMetadata;
+        
+        console.log('[intake.sendMessage] AI response received:', {
+          hasReply: !!aiResponse.reply,
+          replyLength: aiResponse.reply?.length,
+          activeAgent: aiResponse.activeAgent,
+        });
+      } catch (error) {
+        // Log AI service errors with context (Requirement 6.3)
+        aiServiceError = error instanceof Error ? error : new Error('Unknown AI service error');
+        console.error('[intake.sendMessage] AI service error', {
+          timestamp: new Date().toISOString(),
+          sessionId: input.sessionId,
+          userId: ctx.user.id,
+          error: aiServiceError.message,
+          stack: aiServiceError.stack,
+          duration: Date.now() - startTime,
+        });
+        
+        // Increment consecutive errors (Requirement 6.4)
+        currentConsecutiveErrors = incrementConsecutiveErrors(currentConsecutiveErrors);
+        
+        // Use fallback message on AI failure (Requirement 6.1)
+        aiResponse = {
+          reply: getFallbackMessageForAgent(currentAgent, input.content, currentConsecutiveErrors),
+          updatedData: {},
+          thought: INITIAL_THOUGHT,
+          activeAgent: currentAgent,
+        };
+        groundingMetadata = null;
+        
+        console.log('[intake.sendMessage] Using fallback message due to AI service error:', {
+          consecutiveErrors: currentConsecutiveErrors,
+          fallbackMessage: aiResponse.reply.substring(0, 100),
+        });
+      }
 
       // Validate AI response before saving to database (Requirement 4.3)
       let isValidResponse = aiResponse.reply && aiResponse.reply.trim().length > 0;
       let finalReply = aiResponse.reply;
-      let usedFallback = false;
+      let usedFallback = !!aiServiceError; // Track if we used fallback due to AI service error
       
       if (!isValidResponse) {
         // Log empty/malformed responses with session context (Requirement 4.3)
@@ -1723,8 +1844,10 @@ export const intakeRouter = createTRPCRouter({
           'Empty or null reply field in AI response'
         );
         
-        // Increment consecutive errors (Requirement 4.5)
-        currentConsecutiveErrors = incrementConsecutiveErrors(currentConsecutiveErrors);
+        // Only increment consecutive errors if we haven't already (from AI service error)
+        if (!aiServiceError) {
+          currentConsecutiveErrors = incrementConsecutiveErrors(currentConsecutiveErrors);
+        }
         
         // Use contextual fallback message instead of throwing error (Requirements 4.1, 4.2)
         finalReply = getFallbackMessageForAgent(currentAgent, input.content, currentConsecutiveErrors);
@@ -1735,8 +1858,9 @@ export const intakeRouter = createTRPCRouter({
           consecutiveErrors: currentConsecutiveErrors,
           fallbackMessage: finalReply.substring(0, 100),
         });
-      } else {
-        // Reset consecutive errors on successful response (Requirement 4.5)
+      } else if (!aiServiceError) {
+        // Reset consecutive errors on successful response (Requirement 4.5, 6.5)
+        // Only reset if we didn't have an AI service error
         currentConsecutiveErrors = resetConsecutiveErrors();
       }
       
@@ -1897,16 +2021,36 @@ export const intakeRouter = createTRPCRouter({
         isReady,
       };
       
-      console.log('[intake.sendMessage] Returning result:', {
-        hasUserMessage: !!result.userMessage,
-        hasAiMessage: !!result.aiMessage,
-        aiMessageText: result.aiMessage?.text?.substring(0, 100),
-        completeness: result.completeness,
+      // Log request completion with duration and success status (Requirement 3.2)
+      const duration = Date.now() - startTime;
+      console.log('[intake.sendMessage] Request completed successfully', {
+        timestamp: new Date().toISOString(),
+        sessionId: input.sessionId,
+        userId: ctx.user.id,
+        duration,
+        success: true,
+        completeness,
+        isReady,
+        usedFallback,
       });
       
       return result;
       } catch (error) {
-        console.error('[intake.sendMessage] Caught error:', error);
+        // Calculate duration for error logging (Requirement 3.3)
+        const duration = Date.now() - startTime;
+        
+        // Log errors with full context (Requirement 3.3)
+        console.error('[intake.sendMessage] Request failed', {
+          timestamp: new Date().toISOString(),
+          sessionId: input.sessionId,
+          userId: ctx.user.id,
+          duration,
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+          errorCode: error instanceof TRPCError ? error.code : 'UNKNOWN',
+          stack: error instanceof Error ? error.stack : undefined,
+        });
+        
         // Re-throw TRPCErrors as-is
         if (error instanceof TRPCError) {
           throw error;

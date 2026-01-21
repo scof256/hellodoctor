@@ -15,7 +15,31 @@ export type AuthenticatedUser = typeof users.$inferSelect & {
 };
 
 export const createTRPCContext = async (opts: { headers: Headers }) => {
-  const { userId } = await auth();
+  let userId: string | null = null;
+  
+  try {
+    // Attempt to get auth from Clerk
+    const authResult = await auth();
+    userId = authResult?.userId ?? null;
+    
+    // Log authentication status in production for debugging
+    if (process.env.NODE_ENV === 'production') {
+      console.log('[TRPC Context]', {
+        timestamp: new Date().toISOString(),
+        hasAuth: !!userId,
+        userId: userId ? `${userId.substring(0, 8)}...` : null,
+      });
+    }
+  } catch (error) {
+    // Log context creation errors but don't fail - allow public procedures to work
+    console.error('[TRPC Context Error]', {
+      timestamp: new Date().toISOString(),
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+    
+    // userId remains null, which will be caught by protected procedures
+  }
   
   // Extract IP address for rate limiting (fallback to a default for local dev)
   const forwardedFor = opts.headers.get('x-forwarded-for');

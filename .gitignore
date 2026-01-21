@@ -35,3 +35,7 @@ out/
 
 # Kiro specs and configuration
 .kiro/
+
+# Old project folders
+a2a-dr/
+meetdoc-main/
