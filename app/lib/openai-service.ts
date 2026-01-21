@@ -316,7 +316,8 @@ export class OpenAIService {
         max_tokens: 50
       });
       
-      const text = result.choices[0]?.message?.content?.trim().replace(/['"]/g, '') || '';
+      const content = result.choices[0]?.message?.content;
+      const text = content ? content.trim().replace(/['"]/g, '') : '';
       
       if (VALID_AGENT_ROLES.includes(text as AgentRole)) {
         return text as AgentRole;
