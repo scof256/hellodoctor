@@ -209,6 +209,9 @@ export default function PatientMessagesClient() {
   const [searchQuery, setSearchQuery] = useState('');
   const [newMessage, setNewMessage] = useState('');
   const [showMobileChat, setShowMobileChat] = useState(!!initialConnectionId);
+  const [optimisticMessages, setOptimisticMessages] = useState<Message[]>([]);
+  const optimisticMessageIdRef = useRef<string | null>(null);
+  const optimisticMessageTextRef = useRef<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastMarkAsReadAttemptRef = useRef<Record<string, number>>({});
 
@@ -239,9 +242,28 @@ export default function PatientMessagesClient() {
   // Send message mutation
   const sendMessage = api.message.send.useMutation({
     onSuccess: (_data, variables) => {
-      setNewMessage('');
+      const optimisticId = optimisticMessageIdRef.current;
+      if (optimisticId) {
+        setOptimisticMessages((prev) => prev.filter((m) => m.id !== optimisticId));
+      }
+
+      optimisticMessageIdRef.current = null;
+      optimisticMessageTextRef.current = null;
       utils.message.getConversation.invalidate({ connectionId: variables.connectionId });
       utils.message.getConversations.invalidate();
+    },
+    onError: (_err) => {
+      const optimisticId = optimisticMessageIdRef.current;
+      const optimisticText = optimisticMessageTextRef.current;
+      if (optimisticId) {
+        setOptimisticMessages((prev) => prev.filter((m) => m.id !== optimisticId));
+      }
+
+      optimisticMessageIdRef.current = null;
+      optimisticMessageTextRef.current = null;
+      if (optimisticText) {
+        setNewMessage(optimisticText);
+      }
     },
   });
 
@@ -254,7 +276,10 @@ export default function PatientMessagesClient() {
   });
 
   const conversations: Conversation[] = conversationsData?.conversations ?? [];
-  const messages: Message[] = messagesData?.messages ?? [];
+  const serverMessages: Message[] = messagesData?.messages ?? [];
+  const messages: Message[] = selectedConnectionId
+    ? [...serverMessages, ...optimisticMessages.filter((m) => m.senderId === currentUserId && m.content && selectedConnectionId)]
+    : serverMessages;
 
   // Filter conversations by search
   const filteredConversations = conversations.filter(conv => {
@@ -294,10 +319,29 @@ export default function PatientMessagesClient() {
 
   const handleSendMessage = () => {
     if (!newMessage.trim() || !selectedConnectionId) return;
-    sendMessage.mutate({
-      connectionId: selectedConnectionId,
-      content: newMessage.trim(),
-    });
+
+    const content = newMessage.trim();
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+    optimisticMessageIdRef.current = tempId;
+    optimisticMessageTextRef.current = content;
+    const optimistic: Message = {
+      id: tempId,
+      content,
+      senderId: currentUserId ?? 'unknown',
+      createdAt: new Date(),
+      isRead: false,
+      sender: {
+        id: currentUserId ?? 'unknown',
+        firstName: userData?.firstName ?? null,
+        lastName: userData?.lastName ?? null,
+        imageUrl: userData?.imageUrl ?? null,
+        primaryRole: userData?.primaryRole ?? 'patient',
+      },
+    };
+
+    setOptimisticMessages((prev) => [...prev, optimistic]);
+    setNewMessage('');
+    sendMessage.mutate({ connectionId: selectedConnectionId, content });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -310,6 +354,9 @@ export default function PatientMessagesClient() {
   const handleSelectConversation = (connectionId: string) => {
     setSelectedConnectionId(connectionId);
     setShowMobileChat(true);
+    setOptimisticMessages([]);
+    optimisticMessageIdRef.current = null;
+    optimisticMessageTextRef.current = null;
   };
 
   if (conversationsLoading) {
