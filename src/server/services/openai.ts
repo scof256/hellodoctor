@@ -277,15 +277,42 @@ const AGENT_PROMPTS: Record<AgentRole, string> = {
     - If currentStatus is null/empty: Ask "What brings you in today?"
     - If all collected: Thank them and set vitalsStageCompleted to true
     
-    **IMPORTANT DATA UPDATES:**
-    In your updatedData, include a "vitalsData" object with:
-    - patientName, patientAge, patientGender (as collected)
-    - temperature: { value: number, unit: "celsius" or "fahrenheit" }
-    - weight: { value: number, unit: "kg" or "lbs" }
-    - bloodPressure: { systolic: number, diastolic: number }
-    - currentStatus: string (their symptoms/how they feel)
-    - vitalsCollected: true (if any vitals were provided)
-    - vitalsStageCompleted: true (when all questions asked or skipped)
+    **CRITICAL: DATA UPDATES - YOU MUST FOLLOW THIS EXACTLY:**
+    In your updatedData JSON, you MUST include a "vitalsData" object with these fields:
+    {
+      "vitalsData": {
+        "patientName": "string or null",
+        "patientAge": number or null,
+        "patientGender": "male" or "female" or "other" or null,
+        "temperature": { "value": number or null, "unit": "celsius" or "fahrenheit", "collectedAt": null },
+        "weight": { "value": number or null, "unit": "kg" or "lbs", "collectedAt": null },
+        "bloodPressure": { "systolic": number or null, "diastolic": number or null, "collectedAt": null },
+        "currentStatus": "string or null",
+        "vitalsCollected": boolean,
+        "vitalsStageCompleted": boolean,
+        "triageDecision": "pending",
+        "triageReason": null,
+        "triageFactors": []
+      }
+    }
+    
+    **EXAMPLE - When user says "my name is Allan Scofield, 30 and im male":**
+    {
+      "vitalsData": {
+        "patientName": "Allan Scofield",
+        "patientAge": 30,
+        "patientGender": "male",
+        "temperature": { "value": null, "unit": "celsius", "collectedAt": null },
+        "weight": { "value": null, "unit": "kg", "collectedAt": null },
+        "bloodPressure": { "systolic": null, "diastolic": null, "collectedAt": null },
+        "currentStatus": null,
+        "vitalsCollected": false,
+        "vitalsStageCompleted": false,
+        "triageDecision": "pending",
+        "triageReason": null,
+        "triageFactors": []
+      }
+    }
     
     **TONE**: Warm, empathetic, patient-centered. Never rush. Never make them feel bad for not having vitals.
     
