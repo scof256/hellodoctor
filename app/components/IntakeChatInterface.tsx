@@ -381,7 +381,7 @@ const IntakeChatInterface: React.FC<IntakeChatInterfaceProps> = ({
             autoScrollToBottom={true}
           />
         ) : (
-          <div className="h-full overflow-y-auto p-3 sm:p-4 space-y-4 pb-24 scroll-smooth">
+          <div className="h-full overflow-y-auto p-3 sm:p-4 space-y-4 pb-32 sm:pb-36 scroll-smooth">
             {messages.length === 0 && (
               <div className="flex flex-col items-center justify-center h-full text-slate-400 opacity-50">
                 <div className="text-6xl mb-4">{isDoctor ? '🩺' : '📋'}</div>
