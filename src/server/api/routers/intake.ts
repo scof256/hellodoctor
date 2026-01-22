@@ -20,7 +20,7 @@ import { INITIAL_MEDICAL_DATA, INITIAL_THOUGHT } from '@/types';
 import type { MedicalData, SBAR, DoctorThought, Message, AgentRole, FollowUpCounts, TrackingState, ContextLayer } from '@/types';
 import { sendAIMessage, generateClinicalHandover } from '../../services/ai';
 import { calculateIntakeCompleteness, mergeMedicalData, determineAgent } from '../../services/intake-utils';
-import { notificationService } from '../../services/notification';
+import { notificationService, type NotificationData } from '../../services/notification';
 import { auditService } from '../../services/audit';
 import { checkResponseSize, enforcePaginationLimit } from '@/server/lib/query-optimizer';
 import { MAX_PAGINATION_LIMIT } from '@/types/api-responses';
@@ -950,6 +950,233 @@ export const intakeRouter = createTRPCRouter({
       });
 
       return { success: true };
+    }),
+
+  /**
+   * Reset an intake session to initial state.
+   * Clears all medical data and chat messages, returning the session to 'not_started' status.
+   * Only allows reset of sessions with status 'not_started' or 'in_progress'
+   * and no linked appointment.
+   * 
+   * Requirements: 1.1, 1.3, 1.4, 1.5, 2.1-2.10, 3.1, 3.2, 3.4, 3.5, 4.1-4.4, 5.1-5.5, 6.1-6.5, 8.1-8.3
+   */
+  resetSession: patientProcedure
+    .input(z.object({
+      sessionId: z.string().uuid(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      if (!ctx.patient) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Patient profile not found.',
+        });
+      }
+
+      // Get the session (Requirements: 3.1)
+      const session = await ctx.db.query.intakeSessions.findFirst({
+        where: eq(intakeSessions.id, input.sessionId),
+      });
+
+      if (!session) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Intake session not found.',
+        });
+      }
+
+      // Verify the session belongs to this patient via connection (Requirements: 3.1, 3.2)
+      const connection = await ctx.db.query.connections.findFirst({
+        where: and(
+          eq(connections.id, session.connectionId),
+          eq(connections.patientId, ctx.patient.id)
+        ),
+      });
+
+      if (!connection) {
+        // Check if user is super admin (Requirement: 3.5)
+        const isSuperAdmin = ctx.user.primaryRole === 'super_admin';
+        if (!isSuperAdmin) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: 'You are not authorized to reset this intake session.',
+          });
+        }
+        
+        // Super admin: fetch connection for notification purposes
+        const adminConnection = await ctx.db.query.connections.findFirst({
+          where: eq(connections.id, session.connectionId),
+        });
+        
+        if (!adminConnection) {
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message: 'Connection not found.',
+          });
+        }
+      }
+
+      // Status validation (Requirements: 1.5, 5.1, 5.2, 5.3, 5.4)
+      if (session.status === 'ready' || session.status === 'reviewed') {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Cannot reset a completed or reviewed intake session.',
+        });
+      }
+
+      // Check for linked appointment (Requirement: 5.5)
+      const linkedAppointment = await ctx.db.query.appointments.findFirst({
+        where: eq(appointments.intakeSessionId, input.sessionId),
+      });
+
+      if (linkedAppointment) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Cannot reset an intake session that is linked to an appointment.',
+        });
+      }
+
+      // Store previous state for audit logging (Requirements: 4.2, 4.3)
+      const previousStatus = session.status;
+      const previousCompleteness = session.completeness;
+
+      // Get connection for notification (fetch again if needed for super admin case)
+      const notificationConnection = connection ?? await ctx.db.query.connections.findFirst({
+        where: eq(connections.id, session.connectionId),
+      });
+
+      if (!notificationConnection) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Connection not found.',
+        });
+      }
+
+      // Perform reset operation in transaction (Requirements: 2.1-2.10)
+      try {
+        await ctx.db.transaction(async (tx) => {
+          // Delete all chat messages (Requirement: 2.1)
+          await tx
+            .delete(chatMessages)
+            .where(eq(chatMessages.sessionId, input.sessionId));
+
+          // Reset session data (Requirements: 2.2-2.10)
+          await tx
+            .update(intakeSessions)
+            .set({
+              medicalData: INITIAL_MEDICAL_DATA,
+              clinicalHandover: null,
+              doctorThought: INITIAL_THOUGHT,
+              completeness: 0,
+              currentAgent: 'VitalsTriageAgent',
+              status: 'not_started',
+              followUpCounts: {},
+              answeredTopics: [],
+              consecutiveErrors: 0,
+              aiMessageCount: 0,
+              hasOfferedConclusion: false,
+              terminationReason: null,
+              startedAt: null,
+              completedAt: null,
+              updatedAt: new Date(),
+            })
+            .where(eq(intakeSessions.id, input.sessionId));
+        });
+
+        // Audit logging (Requirements: 4.1, 4.2, 4.3)
+        await auditService.log({
+          userId: ctx.user.id,
+          action: 'intake_reset',
+          resourceType: 'intake_session',
+          resourceId: input.sessionId,
+          metadata: {
+            connectionId: session.connectionId,
+            previousStatus,
+            previousCompleteness,
+          },
+        });
+
+        // Send notification to doctor (Requirements: 8.1, 8.2, 8.3)
+        try {
+          // Get patient information for notification
+          const patient = await ctx.db.query.patients.findFirst({
+            where: eq(patients.id, notificationConnection.patientId),
+          });
+
+          if (!patient) {
+            throw new Error('Patient not found for notification');
+          }
+
+          const patientUser = await ctx.db.query.users.findFirst({
+            where: eq(users.id, patient.userId),
+          });
+
+          if (!patientUser) {
+            throw new Error('Patient user not found for notification');
+          }
+
+          const patientName = notificationService.getUserDisplayName(patientUser);
+
+          // Send notification with patient name and session information
+          await notificationService.createNotification({
+            userId: notificationConnection.doctorId,
+            type: 'message', // Using 'message' type as 'intake_reset' is not yet defined
+            title: 'Patient Reset Intake Session',
+            message: `${patientName} has reset their intake session. The session is now empty and they will start fresh.`,
+            data: {
+              connectionId: session.connectionId,
+              sessionId: input.sessionId,
+              patientName,
+              action: 'reset',
+            },
+          });
+        } catch (notificationError) {
+          // Log notification error but don't fail the reset
+          console.error('[intake.resetSession] Failed to send notification:', notificationError);
+        }
+
+        // Fetch and return the reset session (Requirement: 6.3)
+        const resetSession = await ctx.db.query.intakeSessions.findFirst({
+          where: eq(intakeSessions.id, input.sessionId),
+        });
+
+        if (!resetSession) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Failed to retrieve reset session.',
+          });
+        }
+
+        // Return success indicator with redacted session data (Requirement: 6.3)
+        return {
+          success: true,
+          session: redactSessionForPatient(resetSession),
+        };
+      } catch (error) {
+        // Error audit logging (Requirement: 4.4)
+        await auditService.log({
+          userId: ctx.user.id,
+          action: 'intake_reset',
+          resourceType: 'intake_session',
+          resourceId: input.sessionId,
+          metadata: {
+            connectionId: session.connectionId,
+            error: error instanceof Error ? error.message : 'Unknown error',
+            failed: true,
+          },
+        });
+
+        // Re-throw TRPCError instances as-is
+        if (error instanceof TRPCError) {
+          throw error;
+        }
+
+        // Wrap other errors with user-friendly message (Requirement: 6.5)
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to reset intake session. Please try again.',
+          cause: error,
+        });
+      }
     }),
 
   /**
@@ -2458,110 +2685,6 @@ export const intakeRouter = createTRPCRouter({
         completeness,
         isReady,
       };
-    }),
-
-  /**
-   * Reset an intake session by creating a new one.
-   * The old session is preserved for audit purposes.
-   * Requirements: 4.3, 4.6
-   */
-  resetSession: patientProcedure
-    .input(z.object({
-      connectionId: z.string().uuid(),
-      currentSessionId: z.string().uuid().optional(),
-    }))
-    .mutation(async ({ ctx, input }) => {
-      if (!ctx.patient) {
-        throw new TRPCError({
-          code: 'NOT_FOUND',
-          message: 'Patient profile not found.',
-        });
-      }
-
-      // Verify the connection exists and belongs to this patient
-      const connection = await ctx.db.query.connections.findFirst({
-        where: and(
-          eq(connections.id, input.connectionId),
-          eq(connections.patientId, ctx.patient.id),
-          eq(connections.status, 'active')
-        ),
-      });
-
-      if (!connection) {
-        throw new TRPCError({
-          code: 'NOT_FOUND',
-          message: 'Connection not found or not active.',
-        });
-      }
-
-      // If there's a current session, mark it as abandoned (don't delete - preserve for audit)
-      if (input.currentSessionId) {
-        const existingSession = await ctx.db.query.intakeSessions.findFirst({
-          where: and(
-            eq(intakeSessions.id, input.currentSessionId),
-            eq(intakeSessions.connectionId, input.connectionId)
-          ),
-        });
-
-        if (existingSession && existingSession.status !== 'reviewed') {
-          await ctx.db
-            .update(intakeSessions)
-            .set({
-              status: 'reviewed', // Mark as reviewed/closed
-              updatedAt: new Date(),
-            })
-            .where(eq(intakeSessions.id, input.currentSessionId));
-
-          // Log the reset action
-          await auditService.log({
-            userId: ctx.user.id,
-            action: 'intake_reset',
-            resourceType: 'intake_session',
-            resourceId: input.currentSessionId,
-            metadata: {
-              connectionId: input.connectionId,
-              reason: 'user_reset',
-            },
-          });
-        }
-      }
-
-      // Create new intake session
-      // INITIAL_MEDICAL_DATA already has currentAgent: 'VitalsTriageAgent' and vitalsStageCompleted: false
-      const result = await ctx.db
-        .insert(intakeSessions)
-        .values({
-          connectionId: input.connectionId,
-          status: 'not_started',
-          medicalData: INITIAL_MEDICAL_DATA,
-          doctorThought: INITIAL_THOUGHT,
-          completeness: 0,
-          currentAgent: INITIAL_MEDICAL_DATA.currentAgent, // Use currentAgent from INITIAL_MEDICAL_DATA
-        })
-        .returning();
-
-      const newSession = result[0];
-      if (!newSession) {
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed to create new intake session.',
-        });
-      }
-
-      // Log the new session creation
-      await auditService.log({
-        userId: ctx.user.id,
-        action: 'intake_started',
-        resourceType: 'intake_session',
-        resourceId: newSession.id,
-        metadata: {
-          connectionId: input.connectionId,
-          isReset: true,
-          previousSessionId: input.currentSessionId,
-        },
-      });
-
-      return redactSessionForPatient(newSession);
     }),
 
   /**

@@ -8,6 +8,7 @@ import IntakeChatInterface from '@/app/components/IntakeChatInterface';
 import MedicalSidebar from '@/app/components/MedicalSidebar';
 import BookingModal from '@/app/components/BookingModal';
 import { EmergencyAlert } from '@/app/components/EmergencyAlert';
+import { IntakeResetButton } from '@/app/components/IntakeResetButton';
 import { INITIAL_MEDICAL_DATA, INITIAL_THOUGHT } from '@/types';
 import type { Message, MedicalData, DoctorThought, IntakeStage } from '@/types';
 import { useUser } from '@clerk/nextjs';
@@ -266,6 +267,20 @@ export default function PatientIntakePage() {
                 <CheckCircle2 className="w-4 h-4" />
                 Appointment Booked
               </div>
+            )}
+
+            {resolvedSessionId && sessionData?.session && (
+              <IntakeResetButton
+                sessionId={resolvedSessionId}
+                sessionStatus={sessionData.session.status}
+                onResetSuccess={() => {
+                  // Refresh the page data after reset
+                  setMessages([]);
+                  setMedicalData(INITIAL_MEDICAL_DATA);
+                  setThought(INITIAL_THOUGHT);
+                  setCompleteness(0);
+                }}
+              />
             )}
 
             <NotificationBell unreadCount={unreadCount} isPatientDashboard={true} />

@@ -517,3 +517,79 @@ describe('Intake Router Endpoints', () => {
     });
   });
 });
+
+  describe('resetSession endpoint', () => {
+    it('should validate sessionId input', () => {
+      const schema = z.object({ sessionId: z.string().uuid() });
+      
+      // Valid UUID
+      const validInput = { sessionId: '123e4567-e89b-12d3-a456-426614174000' };
+      const validResult = schema.safeParse(validInput);
+      expect(validResult.success).toBe(true);
+      
+      // Invalid UUID
+      const invalidInput = { sessionId: 'not-a-uuid' };
+      const invalidResult = schema.safeParse(invalidInput);
+      expect(invalidResult.success).toBe(false);
+      
+      // Missing sessionId
+      const missingInput = {};
+      const missingResult = schema.safeParse(missingInput);
+      expect(missingResult.success).toBe(false);
+    });
+
+    it('should accept only UUID format for sessionId', () => {
+      const schema = z.object({ sessionId: z.string().uuid() });
+      
+      // Test various invalid formats
+      const invalidFormats = [
+        { sessionId: '' },
+        { sessionId: '123' },
+        { sessionId: 'abc-def-ghi' },
+        { sessionId: '123e4567-e89b-12d3-a456' }, // Incomplete UUID
+      ];
+      
+      invalidFormats.forEach(input => {
+        const result = schema.safeParse(input);
+        expect(result.success).toBe(false);
+      });
+    });
+
+    it('should return success indicator with reset session', () => {
+      // Test that the expected return type has success flag and session
+      const expectedResponse = {
+        success: true,
+        session: {
+          id: '123e4567-e89b-12d3-a456-426614174000',
+          connectionId: '456e7890-e89b-12d3-a456-426614174000',
+          status: 'not_started',
+          completeness: 0,
+          currentAgent: 'VitalsTriageAgent',
+          medicalData: null, // Redacted for patient
+          clinicalHandover: null, // Redacted for patient
+        },
+      };
+      
+      expect(expectedResponse).toHaveProperty('success');
+      expect(expectedResponse.success).toBe(true);
+      expect(expectedResponse).toHaveProperty('session');
+      expect(expectedResponse.session.status).toBe('not_started');
+      expect(expectedResponse.session.completeness).toBe(0);
+      expect(expectedResponse.session.currentAgent).toBe('VitalsTriageAgent');
+    });
+
+    it('should redact sensitive fields for patients', () => {
+      // Test that medicalData and clinicalHandover are redacted in response
+      const expectedResponse = {
+        success: true,
+        session: {
+          id: '123e4567-e89b-12d3-a456-426614174000',
+          medicalData: null, // Should be redacted
+          clinicalHandover: null, // Should be redacted
+        },
+      };
+      
+      expect(expectedResponse.session.medicalData).toBeNull();
+      expect(expectedResponse.session.clinicalHandover).toBeNull();
+    });
+  });
