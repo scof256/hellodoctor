@@ -200,6 +200,17 @@ export const intakeRouter = createTRPCRouter({
         },
       });
 
+      // Create initial greeting message from VitalsTriageAgent
+      const initialGreeting = "Hello! Welcome to HelloDoctor. I'm here to help you today. To get started, could you tell me your name, age, and gender?";
+      
+      await ctx.db.insert(chatMessages).values({
+        sessionId: newSession.id,
+        role: 'model',
+        content: initialGreeting,
+        activeAgent: 'VitalsTriageAgent',
+        groundingMetadata: null,
+      });
+
       return redactSessionForPatient(newSession);
     }),
 
