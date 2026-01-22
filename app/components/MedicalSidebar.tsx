@@ -7,7 +7,8 @@ import {
   Brain, FileText, Pill, AlertTriangle, History, Activity, 
   Microscope, Sparkles, CheckCircle2, Stethoscope, ClipboardCheck, 
   BookOpen, ChevronDown, ChevronUp, FilePlus, ExternalLink, 
-  Radar, User, AlertCircle, Check, FileStack 
+  Radar, User, AlertCircle, Check, FileStack, UserCircle, Thermometer, 
+  Weight, Heart 
 } from 'lucide-react';
 
 interface MedicalSidebarProps {
@@ -21,6 +22,15 @@ const MedicalSidebar: React.FC<MedicalSidebarProps> = ({ data, thought, onTopicT
   const [activeTab, setActiveTab] = useState<'intake' | 'handover'>('intake');
   const [showUCG, setShowUCG] = useState(false);
   const [showFullAnalysis, setShowFullAnalysis] = useState(true);
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+    demographics: true,
+    vitals: true,
+    currentStatus: true,
+  });
+
+  const toggleSection = (section: string) => {
+    setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
+  };
 
   React.useEffect(() => {
     if (!showDoctorHandover && activeTab === 'handover') {
@@ -82,6 +92,145 @@ const MedicalSidebar: React.FC<MedicalSidebarProps> = ({ data, thought, onTopicT
       <div className="flex-1 overflow-y-auto p-4 space-y-6 bg-slate-50/50">
         {activeTab === 'intake' ? (
           <>
+            {/* Patient Demographics Section */}
+            {data.vitalsData && (data.vitalsData.patientName || data.vitalsData.patientAge || data.vitalsData.patientGender) && (
+              <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                <button
+                  onClick={() => toggleSection('demographics')}
+                  className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors"
+                >
+                  <div className="flex items-center gap-2 text-slate-700">
+                    <UserCircle className="w-5 h-5 text-medical-600" />
+                    <h3 className="font-bold text-sm uppercase tracking-wider">Patient Demographics</h3>
+                  </div>
+                  {expandedSections.demographics ? (
+                    <ChevronUp className="w-4 h-4 text-slate-400" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-slate-400" />
+                  )}
+                </button>
+                
+                {expandedSections.demographics && (
+                  <div className="p-4 pt-0 space-y-3">
+                    {data.vitalsData.patientName && (
+                      <div className="flex items-center justify-between py-2 border-b border-slate-100">
+                        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Name</span>
+                        <span className="text-sm font-bold text-slate-800">{data.vitalsData.patientName}</span>
+                      </div>
+                    )}
+                    {data.vitalsData.patientAge && (
+                      <div className="flex items-center justify-between py-2 border-b border-slate-100">
+                        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Age</span>
+                        <span className="text-sm font-bold text-slate-800">{data.vitalsData.patientAge} years</span>
+                      </div>
+                    )}
+                    {data.vitalsData.patientGender && (
+                      <div className="flex items-center justify-between py-2">
+                        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Gender</span>
+                        <span className="text-sm font-bold text-slate-800 capitalize">
+                          {data.vitalsData.patientGender === 'prefer_not_to_say' ? 'Prefer not to say' : data.vitalsData.patientGender}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Vital Signs Section */}
+            {data.vitalsData && data.vitalsData.vitalsCollected && (
+              <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                <button
+                  onClick={() => toggleSection('vitals')}
+                  className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors"
+                >
+                  <div className="flex items-center gap-2 text-slate-700">
+                    <Activity className="w-5 h-5 text-medical-600" />
+                    <h3 className="font-bold text-sm uppercase tracking-wider">Vital Signs</h3>
+                  </div>
+                  {expandedSections.vitals ? (
+                    <ChevronUp className="w-4 h-4 text-slate-400" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-slate-400" />
+                  )}
+                </button>
+                
+                {expandedSections.vitals && (
+                  <div className="p-4 pt-0 space-y-3">
+                    {data.vitalsData.temperature.value !== null && (
+                      <div className="flex items-center justify-between py-2 border-b border-slate-100">
+                        <div className="flex items-center gap-2">
+                          <Thermometer className="w-4 h-4 text-slate-400" />
+                          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Temperature</span>
+                        </div>
+                        <span className={`text-sm font-bold ${
+                          data.vitalsData.temperature.value < 36 || data.vitalsData.temperature.value > 38 
+                            ? 'text-orange-600' 
+                            : 'text-slate-800'
+                        }`}>
+                          {data.vitalsData.temperature.value}°{data.vitalsData.temperature.unit}
+                        </span>
+                      </div>
+                    )}
+                    {data.vitalsData.weight.value !== null && (
+                      <div className="flex items-center justify-between py-2 border-b border-slate-100">
+                        <div className="flex items-center gap-2">
+                          <Weight className="w-4 h-4 text-slate-400" />
+                          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Weight</span>
+                        </div>
+                        <span className="text-sm font-bold text-slate-800">
+                          {data.vitalsData.weight.value} {data.vitalsData.weight.unit}
+                        </span>
+                      </div>
+                    )}
+                    {data.vitalsData.bloodPressure.systolic !== null && data.vitalsData.bloodPressure.diastolic !== null && (
+                      <div className="flex items-center justify-between py-2">
+                        <div className="flex items-center gap-2">
+                          <Heart className="w-4 h-4 text-slate-400" />
+                          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Blood Pressure</span>
+                        </div>
+                        <span className={`text-sm font-bold ${
+                          data.vitalsData.bloodPressure.systolic > 140 || data.vitalsData.bloodPressure.diastolic > 90
+                            ? 'text-red-600'
+                            : data.vitalsData.bloodPressure.systolic < 90 || data.vitalsData.bloodPressure.diastolic < 60
+                            ? 'text-orange-600'
+                            : 'text-slate-800'
+                        }`}>
+                          {data.vitalsData.bloodPressure.systolic}/{data.vitalsData.bloodPressure.diastolic} mmHg
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Current Status Section */}
+            {data.vitalsData && data.vitalsData.currentStatus && (
+              <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                <button
+                  onClick={() => toggleSection('currentStatus')}
+                  className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors"
+                >
+                  <div className="flex items-center gap-2 text-slate-700">
+                    <Stethoscope className="w-5 h-5 text-medical-600" />
+                    <h3 className="font-bold text-sm uppercase tracking-wider">Current Status</h3>
+                  </div>
+                  {expandedSections.currentStatus ? (
+                    <ChevronUp className="w-4 h-4 text-slate-400" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-slate-400" />
+                  )}
+                </button>
+                
+                {expandedSections.currentStatus && (
+                  <div className="p-4 pt-0">
+                    <p className="text-sm text-slate-700 leading-relaxed">{data.vitalsData.currentStatus}</p>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="space-y-3">
               <div className="flex items-center gap-2 text-medical-800 pb-2 border-b border-medical-100">
                 <Brain className="w-5 h-5" />
