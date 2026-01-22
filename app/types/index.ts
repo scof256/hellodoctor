@@ -44,8 +44,9 @@ export interface VitalsData {
   weight: VitalSign<number>;
   bloodPressure: BloodPressureReading;
   currentStatus: string | null;
-  triageDecision: 'emergency' | 'normal' | 'pending';
+  triageDecision: 'emergency' | 'agent-assisted' | 'direct-to-diagnosis' | 'normal' | 'pending';
   triageReason: string | null;
+  triageFactors?: string[]; // Contributing factors for the triage decision
   vitalsStageCompleted: boolean;
 }
 
@@ -138,6 +139,7 @@ export const INITIAL_MEDICAL_DATA: MedicalData = {
     currentStatus: null,
     triageDecision: 'pending',
     triageReason: null,
+    triageFactors: [],
     vitalsStageCompleted: false
   },
   chiefComplaint: null,

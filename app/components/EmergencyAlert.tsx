@@ -12,6 +12,8 @@ interface EmergencyAlertProps {
     label: string;
     number: string;
   }[];
+  onAcknowledge?: () => void;
+  severity?: 'critical' | 'urgent';
 }
 
 export function EmergencyAlert({ 
@@ -20,7 +22,9 @@ export function EmergencyAlert({
   emergencyNumbers = [
     { label: 'Emergency Services', number: '911' },
     { label: 'Local Emergency', number: '112' }
-  ]
+  ],
+  onAcknowledge,
+  severity = 'urgent'
 }: EmergencyAlertProps) {
   const handleCallEmergency = (number: string) => {
     if (typeof window !== 'undefined' && 'navigator' in window) {
@@ -33,11 +37,13 @@ export function EmergencyAlert({
   };
 
   return (
-    <Card className="border-destructive bg-destructive/5">
+    <Card className={`border-destructive ${severity === 'critical' ? 'bg-destructive/10 animate-pulse' : 'bg-destructive/5'}`}>
       <CardHeader>
         <div className="flex items-center gap-2">
-          <AlertTriangle className="h-6 w-6 text-destructive" />
-          <CardTitle className="text-destructive">Immediate Medical Attention Required</CardTitle>
+          <AlertTriangle className={`h-6 w-6 text-destructive ${severity === 'critical' ? 'animate-bounce' : ''}`} />
+          <CardTitle className="text-destructive">
+            {severity === 'critical' ? 'CRITICAL: ' : ''}Immediate Medical Attention Required
+          </CardTitle>
         </div>
         <CardDescription className="text-destructive/80">
           Based on the information you've provided, we recommend seeking immediate medical care.
@@ -83,6 +89,18 @@ export function EmergencyAlert({
             or go to the nearest emergency room. Do not wait for an online consultation.
           </p>
         </div>
+
+        {onAcknowledge && (
+          <div className="mt-4 pt-4 border-t border-destructive/20">
+            <Button
+              onClick={onAcknowledge}
+              variant="outline"
+              className="w-full"
+            >
+              I Understand, Continue with Intake
+            </Button>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

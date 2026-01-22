@@ -295,4 +295,135 @@ describe('MedicalSidebar Component', () => {
       expect(headings.length).toBeGreaterThan(0);
     });
   });
+
+  describe('Vitals Display', () => {
+    const mockVitalsData = {
+      patientName: 'John Doe',
+      patientAge: 35,
+      patientGender: 'male' as const,
+      vitalsCollected: true,
+      temperature: {
+        value: 38.5,
+        unit: 'celsius',
+        collectedAt: '2024-01-15T10:30:00Z'
+      },
+      weight: {
+        value: 75,
+        unit: 'kg',
+        collectedAt: '2024-01-15T10:30:00Z'
+      },
+      bloodPressure: {
+        systolic: 120,
+        diastolic: 80,
+        collectedAt: '2024-01-15T10:30:00Z'
+      },
+      currentStatus: 'Feeling feverish',
+      triageDecision: 'normal' as const,
+      triageReason: 'Normal vitals',
+      vitalsStageCompleted: true
+    };
+
+    it('should display patient demographics when vitals data is present', () => {
+      const dataWithVitals = { ...mockMedicalData, vitalsData: mockVitalsData };
+      render(<MedicalSidebar {...defaultProps} medicalData={dataWithVitals} />);
+      
+      expect(screen.getByText('Patient Demographics')).toBeInTheDocument();
+      expect(screen.getByText('John Doe')).toBeInTheDocument();
+      expect(screen.getByText('35 years')).toBeInTheDocument();
+      expect(screen.getByText('Male')).toBeInTheDocument();
+    });
+
+    it('should display vital signs with units', () => {
+      const dataWithVitals = { ...mockMedicalData, vitalsData: mockVitalsData };
+      render(<MedicalSidebar {...defaultProps} medicalData={dataWithVitals} />);
+      
+      expect(screen.getByText('Vital Signs')).toBeInTheDocument();
+      expect(screen.getByText('Temperature')).toBeInTheDocument();
+      expect(screen.getByText(/38\.5.*°C/)).toBeInTheDocument();
+      expect(screen.getByText('Weight')).toBeInTheDocument();
+      expect(screen.getByText(/75.*kg/)).toBeInTheDocument();
+      expect(screen.getByText('Blood Pressure')).toBeInTheDocument();
+      expect(screen.getByText(/120\/80.*mmHg/)).toBeInTheDocument();
+    });
+
+    it('should display "Not collected" for missing vitals', () => {
+      const dataWithMissingVitals = {
+        ...mockMedicalData,
+        vitalsData: {
+          ...mockVitalsData,
+          temperature: { value: null, unit: 'celsius', collectedAt: null },
+          weight: { value: null, unit: 'kg', collectedAt: null }
+        }
+      };
+      render(<MedicalSidebar {...defaultProps} medicalData={dataWithMissingVitals} />);
+      
+      const notCollectedElements = screen.getAllByText('Not collected');
+      expect(notCollectedElements.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('should highlight concerning temperature values', () => {
+      const dataWithHighTemp = {
+        ...mockMedicalData,
+        vitalsData: {
+          ...mockVitalsData,
+          temperature: { value: 39.8, unit: 'celsius', collectedAt: '2024-01-15T10:30:00Z' }
+        }
+      };
+      const { container } = render(<MedicalSidebar {...defaultProps} medicalData={dataWithHighTemp} />);
+      
+      // Check for warning/critical styling (yellow or red background)
+      const vitalItems = container.querySelectorAll('.bg-yellow-50, .bg-red-50');
+      expect(vitalItems.length).toBeGreaterThan(0);
+    });
+
+    it('should highlight concerning blood pressure values', () => {
+      const dataWithHighBP = {
+        ...mockMedicalData,
+        vitalsData: {
+          ...mockVitalsData,
+          bloodPressure: { systolic: 150, diastolic: 95, collectedAt: '2024-01-15T10:30:00Z' }
+        }
+      };
+      const { container } = render(<MedicalSidebar {...defaultProps} medicalData={dataWithHighBP} />);
+      
+      // Check for warning/critical styling
+      const vitalItems = container.querySelectorAll('.bg-yellow-50, .bg-red-50');
+      expect(vitalItems.length).toBeGreaterThan(0);
+    });
+
+    it('should display triage decision when present', () => {
+      const dataWithVitals = { ...mockMedicalData, vitalsData: mockVitalsData };
+      render(<MedicalSidebar {...defaultProps} medicalData={dataWithVitals} />);
+      
+      expect(screen.getByText('Triage Decision')).toBeInTheDocument();
+      expect(screen.getByText('✓ Normal')).toBeInTheDocument();
+      expect(screen.getByText('Normal vitals')).toBeInTheDocument();
+    });
+
+    it('should display emergency triage decision prominently', () => {
+      const dataWithEmergency = {
+        ...mockMedicalData,
+        vitalsData: {
+          ...mockVitalsData,
+          triageDecision: 'emergency' as const,
+          triageReason: 'Dangerously high temperature detected'
+        }
+      };
+      const { container } = render(<MedicalSidebar {...defaultProps} medicalData={dataWithEmergency} />);
+      
+      expect(screen.getByText(/Emergency/)).toBeInTheDocument();
+      expect(screen.getByText('Dangerously high temperature detected')).toBeInTheDocument();
+      
+      // Check for emergency styling (red background)
+      const emergencyElements = container.querySelectorAll('.bg-red-50');
+      expect(emergencyElements.length).toBeGreaterThan(0);
+    });
+
+    it('should not display vitals section when vitalsData is not present', () => {
+      render(<MedicalSidebar {...defaultProps} medicalData={mockMedicalData} />);
+      
+      expect(screen.queryByText('Patient Demographics')).not.toBeInTheDocument();
+      expect(screen.queryByText('Vital Signs')).not.toBeInTheDocument();
+    });
+  });
 });

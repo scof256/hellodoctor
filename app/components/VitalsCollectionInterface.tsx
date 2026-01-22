@@ -29,6 +29,23 @@ type CollectionStep =
 
 const TOTAL_STEPS = 7;
 
+// Validation ranges
+const VALIDATION_RANGES = {
+  age: { min: 0, max: 120 },
+  temperature: {
+    celsius: { min: 30, max: 45 },
+    fahrenheit: { min: 86, max: 113 }
+  },
+  weight: {
+    kg: { min: 1, max: 300 },
+    lbs: { min: 2, max: 660 }
+  },
+  bloodPressure: {
+    systolic: { min: 60, max: 250 },
+    diastolic: { min: 40, max: 150 }
+  }
+};
+
 export function VitalsCollectionInterface({
   sessionId,
   initialData,
@@ -66,19 +83,128 @@ export function VitalsCollectionInterface({
     setError(null);
 
     // Validate current step
-    if (currentStep === 'name' && (!vitalsData.patientName || vitalsData.patientName.trim().length === 0)) {
-      setError('Please enter your name');
-      return;
+    if (currentStep === 'name') {
+      if (!vitalsData.patientName || vitalsData.patientName.trim().length === 0) {
+        setError('Please enter your name');
+        return;
+      }
+      if (vitalsData.patientName.trim().length < 2) {
+        setError('Name must be at least 2 characters long');
+        return;
+      }
     }
 
-    if (currentStep === 'age' && (vitalsData.patientAge === null || vitalsData.patientAge < 0 || vitalsData.patientAge > 120)) {
-      setError('Please enter a valid age (0-120)');
-      return;
+    if (currentStep === 'age') {
+      if (vitalsData.patientAge === null || vitalsData.patientAge === undefined) {
+        setError('Please enter your age');
+        return;
+      }
+      if (vitalsData.patientAge < VALIDATION_RANGES.age.min || vitalsData.patientAge > VALIDATION_RANGES.age.max) {
+        setError(`Age must be between ${VALIDATION_RANGES.age.min} and ${VALIDATION_RANGES.age.max}`);
+        return;
+      }
     }
 
     if (currentStep === 'gender' && !vitalsData.patientGender) {
       setError('Please select your gender');
       return;
+    }
+
+    // Validate temperature if provided
+    if (currentStep === 'temperature' && tempInput) {
+      const temp = parseFloat(tempInput);
+      const unit = (vitalsData.temperature?.unit || 'celsius') as 'celsius' | 'fahrenheit';
+      const range = VALIDATION_RANGES.temperature[unit];
+      
+      if (isNaN(temp)) {
+        setError('Please enter a valid temperature');
+        return;
+      }
+      if (temp < range.min || temp > range.max) {
+        setError(`Temperature must be between ${range.min}°${unit === 'celsius' ? 'C' : 'F'} and ${range.max}°${unit === 'celsius' ? 'C' : 'F'}`);
+        return;
+      }
+      
+      // Set timestamp when value is provided
+      setVitalsData({
+        ...vitalsData,
+        temperature: {
+          ...vitalsData.temperature!,
+          value: temp,
+          collectedAt: new Date().toISOString()
+        }
+      });
+    }
+
+    // Validate weight if provided
+    if (currentStep === 'weight' && weightInput) {
+      const weight = parseFloat(weightInput);
+      const unit = (vitalsData.weight?.unit || 'kg') as 'kg' | 'lbs';
+      const range = VALIDATION_RANGES.weight[unit];
+      
+      if (isNaN(weight)) {
+        setError('Please enter a valid weight');
+        return;
+      }
+      if (weight < range.min || weight > range.max) {
+        setError(`Weight must be between ${range.min}${unit} and ${range.max}${unit}`);
+        return;
+      }
+      
+      // Set timestamp when value is provided
+      setVitalsData({
+        ...vitalsData,
+        weight: {
+          ...vitalsData.weight!,
+          value: weight,
+          collectedAt: new Date().toISOString()
+        }
+      });
+    }
+
+    // Validate blood pressure if provided
+    if (currentStep === 'bloodPressure' && (systolicInput || diastolicInput)) {
+      const systolic = systolicInput ? parseInt(systolicInput) : null;
+      const diastolic = diastolicInput ? parseInt(diastolicInput) : null;
+      
+      // If one is provided, both must be provided
+      if ((systolic !== null && diastolic === null) || (systolic === null && diastolic !== null)) {
+        setError('Please provide both systolic and diastolic blood pressure readings');
+        return;
+      }
+      
+      if (systolic !== null && diastolic !== null) {
+        if (isNaN(systolic) || isNaN(diastolic)) {
+          setError('Please enter valid blood pressure readings');
+          return;
+        }
+        
+        const systolicRange = VALIDATION_RANGES.bloodPressure.systolic;
+        const diastolicRange = VALIDATION_RANGES.bloodPressure.diastolic;
+        
+        if (systolic < systolicRange.min || systolic > systolicRange.max) {
+          setError(`Systolic pressure must be between ${systolicRange.min} and ${systolicRange.max} mmHg`);
+          return;
+        }
+        if (diastolic < diastolicRange.min || diastolic > diastolicRange.max) {
+          setError(`Diastolic pressure must be between ${diastolicRange.min} and ${diastolicRange.max} mmHg`);
+          return;
+        }
+        if (systolic <= diastolic) {
+          setError('Systolic pressure must be higher than diastolic pressure');
+          return;
+        }
+        
+        // Set timestamp when values are provided
+        setVitalsData({
+          ...vitalsData,
+          bloodPressure: {
+            systolic,
+            diastolic,
+            collectedAt: new Date().toISOString()
+          }
+        });
+      }
     }
 
     // Move to next step or complete
@@ -92,8 +218,50 @@ export function VitalsCollectionInterface({
   };
 
   const handleSkip = () => {
+    setError(null);
+    
     // Only allow skipping vitals, not demographics
-    if (['temperature', 'weight', 'bloodPressure'].includes(currentStep)) {
+    if (['temperature', 'weight', 'bloodPressure', 'status'].includes(currentStep)) {
+      // Clear the input fields for skipped vitals
+      if (currentStep === 'temperature') {
+        setTempInput('');
+        setVitalsData({
+          ...vitalsData,
+          temperature: {
+            value: null,
+            unit: vitalsData.temperature?.unit || 'celsius',
+            collectedAt: null
+          }
+        });
+      } else if (currentStep === 'weight') {
+        setWeightInput('');
+        setVitalsData({
+          ...vitalsData,
+          weight: {
+            value: null,
+            unit: vitalsData.weight?.unit || 'kg',
+            collectedAt: null
+          }
+        });
+      } else if (currentStep === 'bloodPressure') {
+        setSystolicInput('');
+        setDiastolicInput('');
+        setVitalsData({
+          ...vitalsData,
+          bloodPressure: {
+            systolic: null,
+            diastolic: null,
+            collectedAt: null
+          }
+        });
+      } else if (currentStep === 'status') {
+        setStatusInput('');
+        setVitalsData({
+          ...vitalsData,
+          currentStatus: null
+        });
+      }
+      
       const nextIndex = currentStepIndex + 1;
       if (nextIndex < stepOrder.length) {
         setCurrentStep(stepOrder[nextIndex]!);
@@ -130,9 +298,11 @@ export function VitalsCollectionInterface({
 
       const result = await response.json();
 
+      // Handle emergency detection
       if (result.triageDecision === 'emergency') {
         onEmergency(result.triageReason, result.recommendations);
       } else {
+        // Complete vitals data with triage decision
         const completeVitalsData: VitalsData = {
           patientName: vitalsData.patientName!,
           patientAge: vitalsData.patientAge!,
@@ -142,10 +312,13 @@ export function VitalsCollectionInterface({
           weight: vitalsData.weight!,
           bloodPressure: vitalsData.bloodPressure!,
           currentStatus: vitalsData.currentStatus,
-          triageDecision: result.triageDecision,
+          triageDecision: result.triageDecision === 'emergency' ? 'emergency' : 'normal',
           triageReason: result.triageReason,
           vitalsStageCompleted: true
         };
+        
+        // Trigger agent routing transition by calling onComplete
+        // The parent component will handle the agent transition
         onComplete(completeVitalsData);
       }
     } catch (err) {
@@ -161,14 +334,20 @@ export function VitalsCollectionInterface({
         return (
           <div className="space-y-4">
             <div>
-              <Label htmlFor="name">What's your name?</Label>
+              <Label htmlFor="name" className="text-base font-medium">
+                What's your name? <span className="text-destructive">*</span>
+              </Label>
+              <p className="text-sm text-muted-foreground mt-1 mb-2">
+                Please enter your full name as it appears on your ID
+              </p>
               <Input
                 id="name"
                 type="text"
                 value={vitalsData.patientName || ''}
                 onChange={(e) => setVitalsData({ ...vitalsData, patientName: e.target.value })}
-                placeholder="Enter your full name"
+                placeholder="e.g., John Smith"
                 className="mt-2"
+                autoFocus
               />
             </div>
           </div>
@@ -178,16 +357,22 @@ export function VitalsCollectionInterface({
         return (
           <div className="space-y-4">
             <div>
-              <Label htmlFor="age">How old are you?</Label>
+              <Label htmlFor="age" className="text-base font-medium">
+                How old are you? <span className="text-destructive">*</span>
+              </Label>
+              <p className="text-sm text-muted-foreground mt-1 mb-2">
+                Enter your age in years (0-120)
+              </p>
               <Input
                 id="age"
                 type="number"
                 min="0"
                 max="120"
-                value={vitalsData.patientAge || ''}
-                onChange={(e) => setVitalsData({ ...vitalsData, patientAge: parseInt(e.target.value) || null })}
-                placeholder="Enter your age"
+                value={vitalsData.patientAge ?? ''}
+                onChange={(e) => setVitalsData({ ...vitalsData, patientAge: e.target.value ? parseInt(e.target.value) : null })}
+                placeholder="e.g., 35"
                 className="mt-2"
+                autoFocus
               />
             </div>
           </div>
@@ -197,27 +382,32 @@ export function VitalsCollectionInterface({
         return (
           <div className="space-y-4">
             <div>
-              <Label>What is your gender?</Label>
+              <Label className="text-base font-medium">
+                What is your gender? <span className="text-destructive">*</span>
+              </Label>
+              <p className="text-sm text-muted-foreground mt-1 mb-2">
+                This helps us provide appropriate medical care
+              </p>
               <RadioGroup
                 value={vitalsData.patientGender || ''}
                 onValueChange={(value) => setVitalsData({ ...vitalsData, patientGender: value as VitalsData['patientGender'] })}
-                className="mt-2"
+                className="mt-4 space-y-3"
               >
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-3 p-3 rounded-md border hover:bg-accent cursor-pointer">
                   <RadioGroupItem value="male" id="male" />
-                  <Label htmlFor="male">Male</Label>
+                  <Label htmlFor="male" className="cursor-pointer flex-1">Male</Label>
                 </div>
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-3 p-3 rounded-md border hover:bg-accent cursor-pointer">
                   <RadioGroupItem value="female" id="female" />
-                  <Label htmlFor="female">Female</Label>
+                  <Label htmlFor="female" className="cursor-pointer flex-1">Female</Label>
                 </div>
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-3 p-3 rounded-md border hover:bg-accent cursor-pointer">
                   <RadioGroupItem value="other" id="other" />
-                  <Label htmlFor="other">Other</Label>
+                  <Label htmlFor="other" className="cursor-pointer flex-1">Other</Label>
                 </div>
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-3 p-3 rounded-md border hover:bg-accent cursor-pointer">
                   <RadioGroupItem value="prefer_not_to_say" id="prefer_not_to_say" />
-                  <Label htmlFor="prefer_not_to_say">Prefer not to say</Label>
+                  <Label htmlFor="prefer_not_to_say" className="cursor-pointer flex-1">Prefer not to say</Label>
                 </div>
               </RadioGroup>
             </div>
@@ -228,7 +418,12 @@ export function VitalsCollectionInterface({
         return (
           <div className="space-y-4">
             <div>
-              <Label htmlFor="temperature">Do you have your temperature reading?</Label>
+              <Label htmlFor="temperature" className="text-base font-medium">
+                Do you have your temperature reading?
+              </Label>
+              <p className="text-sm text-muted-foreground mt-1 mb-2">
+                Optional - Skip if you don't have a thermometer
+              </p>
               <div className="flex gap-2 mt-2">
                 <Input
                   id="temperature"
@@ -248,18 +443,24 @@ export function VitalsCollectionInterface({
                       });
                     }
                   }}
-                  placeholder="e.g., 37.0"
+                  placeholder={vitalsData.temperature?.unit === 'celsius' ? 'e.g., 37.0' : 'e.g., 98.6'}
                   className="flex-1"
+                  autoFocus
                 />
                 <Select
                   value={vitalsData.temperature?.unit || 'celsius'}
-                  onValueChange={(value) => setVitalsData({
-                    ...vitalsData,
-                    temperature: {
-                      ...vitalsData.temperature!,
-                      unit: value as 'celsius' | 'fahrenheit'
-                    }
-                  })}
+                  onValueChange={(value) => {
+                    const unit = value as 'celsius' | 'fahrenheit';
+                    setVitalsData({
+                      ...vitalsData,
+                      temperature: {
+                        ...vitalsData.temperature!,
+                        unit
+                      }
+                    });
+                    // Clear input when changing units
+                    setTempInput('');
+                  }}
                 >
                   <SelectTrigger className="w-32">
                     <SelectValue />
@@ -270,6 +471,9 @@ export function VitalsCollectionInterface({
                   </SelectContent>
                 </Select>
               </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                Normal range: {vitalsData.temperature?.unit === 'celsius' ? '36.1-37.2°C' : '97.0-99.0°F'}
+              </p>
             </div>
           </div>
         );
@@ -278,7 +482,12 @@ export function VitalsCollectionInterface({
         return (
           <div className="space-y-4">
             <div>
-              <Label htmlFor="weight">Do you have your current weight?</Label>
+              <Label htmlFor="weight" className="text-base font-medium">
+                Do you have your current weight?
+              </Label>
+              <p className="text-sm text-muted-foreground mt-1 mb-2">
+                Optional - Skip if you don't know your weight
+              </p>
               <div className="flex gap-2 mt-2">
                 <Input
                   id="weight"
@@ -298,18 +507,24 @@ export function VitalsCollectionInterface({
                       });
                     }
                   }}
-                  placeholder="e.g., 70"
+                  placeholder={vitalsData.weight?.unit === 'kg' ? 'e.g., 70' : 'e.g., 154'}
                   className="flex-1"
+                  autoFocus
                 />
                 <Select
                   value={vitalsData.weight?.unit || 'kg'}
-                  onValueChange={(value) => setVitalsData({
-                    ...vitalsData,
-                    weight: {
-                      ...vitalsData.weight!,
-                      unit: value as 'kg' | 'lbs'
-                    }
-                  })}
+                  onValueChange={(value) => {
+                    const unit = value as 'kg' | 'lbs';
+                    setVitalsData({
+                      ...vitalsData,
+                      weight: {
+                        ...vitalsData.weight!,
+                        unit
+                      }
+                    });
+                    // Clear input when changing units
+                    setWeightInput('');
+                  }}
                 >
                   <SelectTrigger className="w-32">
                     <SelectValue />
@@ -328,49 +543,62 @@ export function VitalsCollectionInterface({
         return (
           <div className="space-y-4">
             <div>
-              <Label>Do you have your blood pressure reading?</Label>
+              <Label className="text-base font-medium">
+                Do you have your blood pressure reading?
+              </Label>
+              <p className="text-sm text-muted-foreground mt-1 mb-2">
+                Optional - Skip if you don't have a blood pressure monitor
+              </p>
               <div className="flex gap-2 mt-2 items-center">
-                <Input
-                  type="number"
-                  value={systolicInput}
-                  onChange={(e) => {
-                    setSystolicInput(e.target.value);
-                    const value = parseInt(e.target.value);
-                    if (!isNaN(value)) {
-                      setVitalsData({
-                        ...vitalsData,
-                        bloodPressure: {
-                          ...vitalsData.bloodPressure!,
-                          systolic: value
-                        }
-                      });
-                    }
-                  }}
-                  placeholder="Systolic (e.g., 120)"
-                  className="flex-1"
-                />
-                <span className="text-lg">/</span>
-                <Input
-                  type="number"
-                  value={diastolicInput}
-                  onChange={(e) => {
-                    setDiastolicInput(e.target.value);
-                    const value = parseInt(e.target.value);
-                    if (!isNaN(value)) {
-                      setVitalsData({
-                        ...vitalsData,
-                        bloodPressure: {
-                          ...vitalsData.bloodPressure!,
-                          diastolic: value
-                        }
-                      });
-                    }
-                  }}
-                  placeholder="Diastolic (e.g., 80)"
-                  className="flex-1"
-                />
-                <span className="text-sm text-muted-foreground">mmHg</span>
+                <div className="flex-1">
+                  <Input
+                    type="number"
+                    value={systolicInput}
+                    onChange={(e) => {
+                      setSystolicInput(e.target.value);
+                      const value = parseInt(e.target.value);
+                      if (!isNaN(value)) {
+                        setVitalsData({
+                          ...vitalsData,
+                          bloodPressure: {
+                            ...vitalsData.bloodPressure!,
+                            systolic: value
+                          }
+                        });
+                      }
+                    }}
+                    placeholder="Systolic (e.g., 120)"
+                    autoFocus
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">Top number</p>
+                </div>
+                <span className="text-2xl font-bold text-muted-foreground">/</span>
+                <div className="flex-1">
+                  <Input
+                    type="number"
+                    value={diastolicInput}
+                    onChange={(e) => {
+                      setDiastolicInput(e.target.value);
+                      const value = parseInt(e.target.value);
+                      if (!isNaN(value)) {
+                        setVitalsData({
+                          ...vitalsData,
+                          bloodPressure: {
+                            ...vitalsData.bloodPressure!,
+                            diastolic: value
+                          }
+                        });
+                      }
+                    }}
+                    placeholder="Diastolic (e.g., 80)"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">Bottom number</p>
+                </div>
+                <span className="text-sm text-muted-foreground whitespace-nowrap">mmHg</span>
               </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                Normal range: 90-120 / 60-80 mmHg
+              </p>
             </div>
           </div>
         );
@@ -379,16 +607,22 @@ export function VitalsCollectionInterface({
         return (
           <div className="space-y-4">
             <div>
-              <Label htmlFor="status">How are you feeling right now?</Label>
+              <Label htmlFor="status" className="text-base font-medium">
+                How are you feeling right now?
+              </Label>
+              <p className="text-sm text-muted-foreground mt-1 mb-2">
+                Optional - Describe your current symptoms or how you're feeling
+              </p>
               <Textarea
                 id="status"
                 value={statusInput}
                 onChange={(e) => {
                   setStatusInput(e.target.value);
-                  setVitalsData({ ...vitalsData, currentStatus: e.target.value });
+                  setVitalsData({ ...vitalsData, currentStatus: e.target.value || null });
                 }}
-                placeholder="Describe how you're feeling..."
-                className="mt-2 min-h-[100px]"
+                placeholder="e.g., I have a headache and feel tired..."
+                className="mt-2 min-h-[120px]"
+                autoFocus
               />
             </div>
           </div>
@@ -412,7 +646,7 @@ export function VitalsCollectionInterface({
     }
   };
 
-  const canSkip = ['temperature', 'weight', 'bloodPressure'].includes(currentStep);
+  const canSkip = ['temperature', 'weight', 'bloodPressure', 'status'].includes(currentStep);
 
   return (
     <Card className="w-full max-w-2xl mx-auto">
@@ -420,33 +654,83 @@ export function VitalsCollectionInterface({
         <CardTitle>{getStepTitle()}</CardTitle>
         <CardDescription>
           Step {currentStepIndex + 1} of {TOTAL_STEPS}
+          {canSkip && <span className="ml-2 text-muted-foreground">(Optional)</span>}
         </CardDescription>
-        <Progress value={progress} className="mt-2" />
+        <div className="mt-3">
+          <Progress value={progress} className="h-2" />
+          <p className="text-xs text-muted-foreground mt-1 text-right">
+            {Math.round(progress)}% complete
+          </p>
+        </div>
       </CardHeader>
       <CardContent className="space-y-6">
         {renderStep()}
 
         {error && (
-          <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">
-            {error}
+          <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md border border-destructive/20">
+            <strong>Error:</strong> {error}
           </div>
         )}
 
-        <div className="flex gap-2 justify-end">
+        <div className="flex gap-2 justify-end pt-4 border-t">
           {canSkip && (
             <Button
               variant="outline"
               onClick={handleSkip}
               disabled={isSubmitting}
+              className="gap-2"
             >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M5 12h14" />
+                <path d="m12 5 7 7-7 7" />
+              </svg>
               I don't have it
             </Button>
           )}
           <Button
             onClick={handleNext}
             disabled={isSubmitting}
+            className="min-w-[120px]"
           >
-            {isSubmitting ? 'Saving...' : currentStepIndex === TOTAL_STEPS - 1 ? 'Complete' : 'Next'}
+            {isSubmitting ? (
+              <>
+                <svg
+                  className="animate-spin -ml-1 mr-2 h-4 w-4"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  />
+                </svg>
+                Saving...
+              </>
+            ) : currentStepIndex === TOTAL_STEPS - 1 ? (
+              'Complete'
+            ) : (
+              'Next'
+            )}
           </Button>
         </div>
       </CardContent>

@@ -36,6 +36,7 @@ export interface StreamCallConfig {
 
 // Agent roles from existing demo
 export type AgentRole = 
+  | 'VitalsTriageAgent'
   | 'Triage' 
   | 'ClinicalInvestigator' 
   | 'RecordsClerk' 
@@ -43,6 +44,7 @@ export type AgentRole =
   | 'HandoverSpecialist';
 
 export const VALID_AGENT_ROLES: AgentRole[] = [
+  'VitalsTriageAgent',
   'Triage',
   'ClinicalInvestigator',
   'RecordsClerk',
@@ -60,6 +62,32 @@ export interface SBAR {
 
 // Medical Data from intake
 export interface MedicalData {
+  vitalsData?: {
+    patientName: string | null;
+    patientAge: number | null;
+    patientGender: 'male' | 'female' | 'other' | 'prefer_not_to_say' | null;
+    vitalsCollected: boolean;
+    temperature: {
+      value: number | null;
+      unit: string;
+      collectedAt: string | null;
+    };
+    weight: {
+      value: number | null;
+      unit: string;
+      collectedAt: string | null;
+    };
+    bloodPressure: {
+      systolic: number | null;
+      diastolic: number | null;
+      collectedAt: string | null;
+    };
+    currentStatus: string | null;
+    triageDecision: 'emergency' | 'agent-assisted' | 'direct-to-diagnosis' | 'normal' | 'pending';
+    triageReason: string | null;
+    triageFactors?: string[];
+    vitalsStageCompleted: boolean;
+  };
   chiefComplaint: string | null;
   hpi: string | null;
   medicalRecords: string[];
@@ -143,6 +171,32 @@ export interface FailedMessage extends PendingMessage {
 
 // Initial states
 export const INITIAL_MEDICAL_DATA: MedicalData = {
+  vitalsData: {
+    patientName: null,
+    patientAge: null,
+    patientGender: null,
+    vitalsCollected: false,
+    temperature: {
+      value: null,
+      unit: 'celsius',
+      collectedAt: null
+    },
+    weight: {
+      value: null,
+      unit: 'kg',
+      collectedAt: null
+    },
+    bloodPressure: {
+      systolic: null,
+      diastolic: null,
+      collectedAt: null
+    },
+    currentStatus: null,
+    triageDecision: 'pending',
+    triageReason: null,
+    triageFactors: [],
+    vitalsStageCompleted: false
+  },
   chiefComplaint: null,
   hpi: null,
   medicalRecords: [],
@@ -154,7 +208,7 @@ export const INITIAL_MEDICAL_DATA: MedicalData = {
   familyHistory: null,
   socialHistory: null,
   reviewOfSystems: [],
-  currentAgent: 'Triage',
+  currentAgent: 'VitalsTriageAgent',
   clinicalHandover: null,
   ucgRecommendations: null,
   bookingStatus: 'collecting'
@@ -226,5 +280,5 @@ export const DEFAULT_TRACKING_STATE: TrackingState = {
   answeredTopics: [],
   aiMessageCount: 0,
   completeness: 0,
-  currentAgent: 'Triage',
+  currentAgent: 'VitalsTriageAgent',
 };

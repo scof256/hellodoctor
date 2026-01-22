@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { db } from '@/server/db';
-import { intakeSessions } from '@/server/db/schema';
+import { intakeSessions, connections } from '@/server/db/schema';
 import { eq } from 'drizzle-orm';
-import { VitalsTriageService } from '@/server/services/vitals-triage';
+import { triageService } from '@/server/services/triage-service';
 import { validateTemperature, validateWeight, validateBloodPressure, validateAge } from '@/lib/vitals-validation';
+import { determineAgent } from '@/app/lib/agent-router';
 import type { VitalsData, MedicalData } from '@/app/types';
 
 interface SaveVitalsRequest {
@@ -14,9 +15,10 @@ interface SaveVitalsRequest {
 
 interface SaveVitalsResponse {
   success: boolean;
-  triageDecision: 'emergency' | 'normal' | 'pending';
+  triageDecision: 'emergency' | 'agent-assisted' | 'direct-to-diagnosis';
   triageReason: string;
   recommendations: string[];
+  nextAgent: string;
 }
 
 interface ErrorResponse {
@@ -58,10 +60,14 @@ export async function POST(request: Request) {
       );
     }
 
-    // Fetch the intake session
+    // Fetch the intake session with connection data
     const [session] = await db
-      .select()
+      .select({
+        session: intakeSessions,
+        connection: connections
+      })
       .from(intakeSessions)
+      .innerJoin(connections, eq(intakeSessions.connectionId, connections.id))
       .where(eq(intakeSessions.id, body.sessionId))
       .limit(1);
 
@@ -73,7 +79,7 @@ export async function POST(request: Request) {
     }
 
     // Verify user owns this session
-    if (session.patientId !== userId) {
+    if (session.connection.patientId !== userId) {
       return NextResponse.json<ErrorResponse>(
         { error: 'Forbidden', details: 'You do not have access to this session' },
         { status: 403 }
@@ -85,7 +91,7 @@ export async function POST(request: Request) {
 
     if (body.vitalsData.patientAge !== undefined && body.vitalsData.patientAge !== null) {
       const ageValidation = validateAge(body.vitalsData.patientAge);
-      if (!ageValidation.valid) {
+      if (!ageValidation.isValid) {
         validationErrors.push(ageValidation.error || 'Invalid age');
       }
     }
@@ -93,9 +99,9 @@ export async function POST(request: Request) {
     if (body.vitalsData.temperature?.value !== undefined && body.vitalsData.temperature?.value !== null) {
       const tempValidation = validateTemperature(
         body.vitalsData.temperature.value,
-        body.vitalsData.temperature.unit || 'celsius'
+        (body.vitalsData.temperature.unit || 'celsius') as 'celsius' | 'fahrenheit'
       );
-      if (!tempValidation.valid) {
+      if (!tempValidation.isValid) {
         validationErrors.push(tempValidation.error || 'Invalid temperature');
       }
     }
@@ -103,20 +109,22 @@ export async function POST(request: Request) {
     if (body.vitalsData.weight?.value !== undefined && body.vitalsData.weight?.value !== null) {
       const weightValidation = validateWeight(
         body.vitalsData.weight.value,
-        body.vitalsData.weight.unit || 'kg'
+        (body.vitalsData.weight.unit || 'kg') as 'kg' | 'lbs'
       );
-      if (!weightValidation.valid) {
+      if (!weightValidation.isValid) {
         validationErrors.push(weightValidation.error || 'Invalid weight');
       }
     }
 
     if (body.vitalsData.bloodPressure?.systolic !== undefined || body.vitalsData.bloodPressure?.diastolic !== undefined) {
-      const bpValidation = validateBloodPressure(
-        body.vitalsData.bloodPressure?.systolic || null,
-        body.vitalsData.bloodPressure?.diastolic || null
-      );
-      if (!bpValidation.valid) {
-        validationErrors.push(bpValidation.error || 'Invalid blood pressure');
+      const systolic = body.vitalsData.bloodPressure?.systolic ?? 0;
+      const diastolic = body.vitalsData.bloodPressure?.diastolic ?? 0;
+      
+      if (systolic > 0 && diastolic > 0) {
+        const bpValidation = validateBloodPressure(systolic, diastolic);
+        if (!bpValidation.isValid) {
+          validationErrors.push(bpValidation.error || 'Invalid blood pressure');
+        }
       }
     }
 
@@ -128,7 +136,7 @@ export async function POST(request: Request) {
     }
 
     // Get existing medical data
-    const existingMedicalData = (session.medicalData as MedicalData) || {};
+    const existingMedicalData = (session.session.medicalData as MedicalData) || {};
 
     // Merge vitals data with existing data
     const currentVitalsData = existingMedicalData.vitalsData || {
@@ -173,21 +181,41 @@ export async function POST(request: Request) {
       }
     };
 
-    // Perform triage assessment
-    const triageService = new VitalsTriageService();
-    const vitalsResult = triageService.assessVitals(updatedVitalsData);
-    const symptomsResult = triageService.assessSymptoms(updatedVitalsData.currentStatus || '');
-    const finalResult = triageService.combineAssessments(vitalsResult, symptomsResult);
+    // Perform triage assessment using the new triage service
+    const triageResult = triageService.analyzeVitals(updatedVitalsData);
+    const emergencyResult = triageService.detectEmergency(updatedVitalsData, updatedVitalsData.currentStatus || undefined);
+
+    // Determine final triage decision
+    let finalTriageDecision: 'emergency' | 'agent-assisted' | 'direct-to-diagnosis' | 'pending';
+    let finalTriageReason: string;
+    let recommendations: string[] = [];
+
+    if (emergencyResult.isEmergency) {
+      finalTriageDecision = 'emergency';
+      finalTriageReason = triageResult.reason;
+      recommendations = emergencyResult.recommendations;
+    } else {
+      finalTriageDecision = triageResult.decision;
+      finalTriageReason = triageResult.reason;
+      recommendations = [];
+    }
 
     // Update triage decision in vitals data
-    updatedVitalsData.triageDecision = finalResult.decision;
-    updatedVitalsData.triageReason = finalResult.reason;
+    updatedVitalsData.triageDecision = finalTriageDecision;
+    updatedVitalsData.triageReason = finalTriageReason;
+    updatedVitalsData.triageFactors = triageResult.factors; // Save triage factors
+    updatedVitalsData.vitalsStageCompleted = true;
+    updatedVitalsData.vitalsCollected = true;
 
     // Update medical data
     const updatedMedicalData: MedicalData = {
       ...existingMedicalData,
       vitalsData: updatedVitalsData
     };
+
+    // Determine next agent based on triage decision and updated medical data
+    const nextAgent = determineAgent(updatedMedicalData);
+    updatedMedicalData.currentAgent = nextAgent;
 
     // Save to database
     await db
@@ -200,9 +228,10 @@ export async function POST(request: Request) {
 
     return NextResponse.json<SaveVitalsResponse>({
       success: true,
-      triageDecision: finalResult.decision,
-      triageReason: finalResult.reason,
-      recommendations: finalResult.recommendations
+      triageDecision: finalTriageDecision,
+      triageReason: finalTriageReason,
+      recommendations: recommendations,
+      nextAgent: nextAgent
     });
 
   } catch (error) {

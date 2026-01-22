@@ -60,10 +60,17 @@ export default function IntakeChatInterface({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to newest messages (Requirement 2.8)
+  // Auto-scroll to newest messages (Requirement 2.8, 4.6)
+  // Ensures scroll target is above input section with proper padding
   useEffect(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    if (messagesEndRef.current && messagesContainerRef.current) {
+      // Use scrollIntoView with block: 'end' to ensure the message is fully visible
+      // The padding-bottom on the container ensures space above the input section
+      messagesEndRef.current.scrollIntoView({ 
+        behavior: 'smooth',
+        block: 'end',
+        inline: 'nearest'
+      });
     }
   }, [messages]);
 
@@ -147,10 +154,10 @@ export default function IntakeChatInterface({
         </div>
       )}
 
-      {/* Messages container with auto-scroll (Requirement 2.8) */}
+      {/* Messages container with auto-scroll (Requirement 2.8, 4.1, 4.2, 4.3, 4.6) */}
       <div
         ref={messagesContainerRef}
-        className="flex-1 overflow-y-auto px-4 py-6 space-y-4"
+        className="flex-1 overflow-y-auto px-4 py-6 pb-8 space-y-4 min-h-0"
       >
         {messages.length === 0 ? (
           <div className="flex items-center justify-center h-full">

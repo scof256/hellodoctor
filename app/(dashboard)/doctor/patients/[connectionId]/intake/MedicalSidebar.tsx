@@ -2,9 +2,10 @@
 
 import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { AlertCircle, FileText, X, ChevronDown, ChevronUp, Maximize2, Minimize2 } from 'lucide-react';
+import { AlertCircle, FileText, X, ChevronDown, ChevronUp, Maximize2, Minimize2, User, Activity, Thermometer, Weight, Heart } from 'lucide-react';
 import { ClinicalReasoning } from './ClinicalReasoning';
 import type { DoctorThought } from '@/types';
+import type { VitalsData } from '@/app/types';
 
 interface MedicalSidebarProps {
   isOpen: boolean;
@@ -13,6 +14,7 @@ interface MedicalSidebarProps {
   onTabChange: (tab: 'intake-data' | 'handover') => void;
   completeness: number;
   medicalData: {
+    vitalsData?: VitalsData;
     chiefComplaint?: string | null;
     reviewOfSystems?: string[];
     medications?: string[];
@@ -29,6 +31,399 @@ interface MedicalSidebarProps {
   isGeneratingReasoning?: boolean;
   isExpanded?: boolean;
   onToggleExpand?: () => void;
+}
+
+/**
+ * Helper function to check if temperature is concerning
+ */
+function isTemperatureConcerning(temperature: { value: number | null; unit: string }): 'normal' | 'warning' | 'critical' {
+  if (temperature.value === null) return 'normal';
+  
+  const tempCelsius = temperature.unit === 'fahrenheit' 
+    ? (temperature.value - 32) * 5 / 9 
+    : temperature.value;
+  
+  // Critical: Emergency thresholds
+  if (tempCelsius > 39.5 || tempCelsius < 35.0) return 'critical';
+  
+  // Warning: Approaching emergency thresholds
+  if (tempCelsius > 38.5 || tempCelsius < 36.0) return 'warning';
+  
+  return 'normal';
+}
+
+/**
+ * Helper function to check if blood pressure is concerning
+ */
+function isBloodPressureConcerning(bloodPressure: { systolic: number | null; diastolic: number | null }): 'normal' | 'warning' | 'critical' {
+  const { systolic, diastolic } = bloodPressure;
+  
+  if (systolic === null && diastolic === null) return 'normal';
+  
+  // Critical: Emergency thresholds
+  if (systolic !== null && (systolic > 180 || systolic < 90)) return 'critical';
+  if (diastolic !== null && (diastolic > 120 || diastolic < 60)) return 'critical';
+  
+  // Warning: Approaching emergency thresholds
+  if (systolic !== null && (systolic > 140 || systolic < 100)) return 'warning';
+  if (diastolic !== null && (diastolic > 90 || diastolic < 70)) return 'warning';
+  
+  return 'normal';
+}
+
+/**
+ * Helper function to format gender display
+ */
+function formatGender(gender: string | null): string {
+  if (!gender) return 'Not specified';
+  
+  const genderMap: Record<string, string> = {
+    'male': 'Male',
+    'female': 'Female',
+    'other': 'Other',
+    'prefer_not_to_say': 'Prefer not to say'
+  };
+  
+  return genderMap[gender] || gender;
+}
+
+/**
+ * Helper function to format timestamp
+ */
+function formatTimestamp(timestamp: string | null): string {
+  if (!timestamp) return '';
+  
+  try {
+    const date = new Date(timestamp);
+    return date.toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * VitalItem Component
+ * Displays a single vital sign with appropriate styling based on concern level
+ */
+interface VitalItemProps {
+  label: string;
+  value: string | number | null;
+  unit?: string;
+  timestamp: string | null;
+  isConcerning?: 'normal' | 'warning' | 'critical';
+  icon?: React.ReactNode;
+}
+
+function VitalItem({ label, value, unit, timestamp, isConcerning = 'normal', icon }: VitalItemProps) {
+  const hasValue = value !== null && value !== undefined;
+  
+  // Determine styling based on concern level
+  const concernStyles = {
+    normal: 'bg-white border-slate-200',
+    warning: 'bg-yellow-50 border-yellow-300',
+    critical: 'bg-red-50 border-red-300'
+  };
+  
+  const valueStyles = {
+    normal: 'text-slate-900',
+    warning: 'text-yellow-900',
+    critical: 'text-red-900'
+  };
+  
+  const labelStyles = {
+    normal: 'text-slate-600',
+    warning: 'text-yellow-700',
+    critical: 'text-red-700'
+  };
+  
+  return (
+    <div className={`rounded-lg border p-3 ${concernStyles[isConcerning]}`}>
+      <div className="flex items-start justify-between">
+        <div className="flex items-center gap-2">
+          {icon && <span className={labelStyles[isConcerning]}>{icon}</span>}
+          <span className={`text-sm font-medium ${labelStyles[isConcerning]}`}>
+            {label}
+          </span>
+        </div>
+        {isConcerning === 'critical' && (
+          <AlertCircle className="w-4 h-4 text-red-500" />
+        )}
+        {isConcerning === 'warning' && (
+          <AlertCircle className="w-4 h-4 text-yellow-500" />
+        )}
+      </div>
+      
+      {hasValue ? (
+        <>
+          <div className={`text-lg font-semibold mt-1 ${valueStyles[isConcerning]}`}>
+            {value}{unit && ` ${unit}`}
+          </div>
+          {timestamp && (
+            <div className="text-xs text-slate-500 mt-1">
+              Collected: {formatTimestamp(timestamp)}
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="text-sm text-slate-400 mt-1 italic">
+          Not collected
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * VitalsDisplay Component
+ * Displays patient demographics and vital signs with visual highlighting
+ * 
+ * Requirements: 5.2, 5.3, 5.4, 5.5, 5.6, 7.4
+ */
+interface VitalsDisplayProps {
+  vitalsData: VitalsData;
+}
+
+function VitalsDisplay({ vitalsData }: VitalsDisplayProps) {
+  const tempConcern = isTemperatureConcerning(vitalsData.temperature);
+  const bpConcern = isBloodPressureConcerning(vitalsData.bloodPressure);
+  
+  // Format blood pressure value
+  const bpValue = vitalsData.bloodPressure.systolic !== null && vitalsData.bloodPressure.diastolic !== null
+    ? `${vitalsData.bloodPressure.systolic}/${vitalsData.bloodPressure.diastolic}`
+    : vitalsData.bloodPressure.systolic !== null
+    ? `${vitalsData.bloodPressure.systolic}/?`
+    : vitalsData.bloodPressure.diastolic !== null
+    ? `?/${vitalsData.bloodPressure.diastolic}`
+    : null;
+  
+  // Format temperature value with unit
+  const tempValue = vitalsData.temperature.value !== null
+    ? vitalsData.temperature.value
+    : null;
+  const tempUnit = vitalsData.temperature.unit === 'celsius' ? '°C' : '°F';
+  
+  return (
+    <div className="space-y-4">
+      {/* Patient Demographics */}
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 border border-blue-200">
+        <h3 className="font-semibold text-blue-900 mb-3 flex items-center gap-2">
+          <User className="w-4 h-4" />
+          Patient Demographics
+        </h3>
+        <div className="space-y-2">
+          <div className="flex justify-between items-center">
+            <span className="text-sm text-blue-700">Name:</span>
+            <span className="text-sm font-medium text-blue-900">
+              {vitalsData.patientName || <span className="text-slate-400 italic">Not provided</span>}
+            </span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-sm text-blue-700">Age:</span>
+            <span className="text-sm font-medium text-blue-900">
+              {vitalsData.patientAge !== null ? `${vitalsData.patientAge} years` : <span className="text-slate-400 italic">Not provided</span>}
+            </span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-sm text-blue-700">Gender:</span>
+            <span className="text-sm font-medium text-blue-900">
+              {formatGender(vitalsData.patientGender)}
+            </span>
+          </div>
+        </div>
+      </div>
+      
+      {/* Vital Signs */}
+      <div>
+        <h3 className="font-semibold text-slate-800 mb-3 flex items-center gap-2">
+          <Activity className="w-4 h-4" />
+          Vital Signs
+        </h3>
+        <div className="space-y-2">
+          <VitalItem
+            label="Temperature"
+            value={tempValue}
+            unit={tempUnit}
+            timestamp={vitalsData.temperature.collectedAt}
+            isConcerning={tempConcern}
+            icon={<Thermometer className="w-4 h-4" />}
+          />
+          
+          <VitalItem
+            label="Weight"
+            value={vitalsData.weight.value}
+            unit={vitalsData.weight.unit}
+            timestamp={vitalsData.weight.collectedAt}
+            icon={<Weight className="w-4 h-4" />}
+          />
+          
+          <VitalItem
+            label="Blood Pressure"
+            value={bpValue}
+            unit="mmHg"
+            timestamp={vitalsData.bloodPressure.collectedAt}
+            isConcerning={bpConcern}
+            icon={<Heart className="w-4 h-4" />}
+          />
+        </div>
+      </div>
+      
+      {/* Current Status */}
+      {vitalsData.currentStatus && (
+        <div className="bg-slate-50 rounded-lg border border-slate-200 p-3">
+          <h4 className="text-sm font-medium text-slate-700 mb-1">Current Status</h4>
+          <p className="text-sm text-slate-600">{vitalsData.currentStatus}</p>
+        </div>
+      )}
+
+      {/* Triage Decision Display */}
+      {vitalsData.triageDecision && vitalsData.triageDecision !== 'pending' && (
+        <TriageDecisionDisplay
+          decision={vitalsData.triageDecision}
+          reason={vitalsData.triageReason}
+          factors={vitalsData.triageFactors || []}
+        />
+      )}
+      
+    </div>
+  );
+}
+
+/**
+ * TriageDecisionDisplay Component
+ * Displays triage decision with type, rationale, and explanations
+ * 
+ * Requirements: 6.2, 6.3, 6.4, 6.5, 6.6
+ */
+interface TriageDecisionDisplayProps {
+  decision: 'emergency' | 'agent-assisted' | 'direct-to-diagnosis' | 'normal' | 'pending';
+  reason: string | null;
+  factors?: string[];
+}
+
+function TriageDecisionDisplay({ decision, reason, factors }: TriageDecisionDisplayProps) {
+  // Don't display if pending
+  if (decision === 'pending') {
+    return null;
+  }
+
+  // Determine styling and content based on decision type
+  const getDecisionConfig = () => {
+    switch (decision) {
+      case 'emergency':
+        return {
+          bgColor: 'bg-red-50',
+          borderColor: 'border-red-300',
+          titleColor: 'text-red-800',
+          textColor: 'text-red-900',
+          icon: '🚨',
+          title: 'Emergency',
+          explanation: 'This case requires immediate medical attention. Emergency conditions have been detected that need urgent care.',
+          showFactors: true
+        };
+      
+      case 'agent-assisted':
+        return {
+          bgColor: 'bg-amber-50',
+          borderColor: 'border-amber-300',
+          titleColor: 'text-amber-800',
+          textColor: 'text-amber-900',
+          icon: '🤝',
+          title: 'Agent-Assisted Intake',
+          explanation: 'This case has been routed for comprehensive agent-assisted intake due to complexity factors that require detailed investigation.',
+          showFactors: true
+        };
+      
+      case 'direct-to-diagnosis':
+        return {
+          bgColor: 'bg-green-50',
+          borderColor: 'border-green-300',
+          titleColor: 'text-green-800',
+          textColor: 'text-green-900',
+          icon: '✓',
+          title: 'Direct to Diagnosis',
+          explanation: 'This case has straightforward presentation and can proceed directly to diagnosis without additional agent assistance.',
+          showFactors: true
+        };
+      
+      case 'normal':
+        return {
+          bgColor: 'bg-blue-50',
+          borderColor: 'border-blue-300',
+          titleColor: 'text-blue-800',
+          textColor: 'text-blue-900',
+          icon: '✓',
+          title: 'Normal Assessment',
+          explanation: 'Vitals and symptoms are within normal ranges.',
+          showFactors: false
+        };
+      
+      default:
+        return {
+          bgColor: 'bg-slate-50',
+          borderColor: 'border-slate-300',
+          titleColor: 'text-slate-800',
+          textColor: 'text-slate-900',
+          icon: 'ℹ️',
+          title: 'Assessment',
+          explanation: '',
+          showFactors: false
+        };
+    }
+  };
+
+  const config = getDecisionConfig();
+
+  return (
+    <div className={`rounded-lg border p-4 ${config.bgColor} ${config.borderColor}`}>
+      <div className="flex items-start gap-2 mb-2">
+        <span className="text-xl" role="img" aria-label={config.title}>
+          {config.icon}
+        </span>
+        <div className="flex-1">
+          <h4 className={`text-sm font-semibold ${config.titleColor} mb-1`}>
+            Triage Decision: {config.title}
+          </h4>
+          <p className={`text-xs ${config.textColor} leading-relaxed`}>
+            {config.explanation}
+          </p>
+        </div>
+      </div>
+
+      {/* Decision Rationale */}
+      {reason && (
+        <div className={`mt-3 pt-3 border-t ${config.borderColor}`}>
+          <p className={`text-xs font-medium ${config.titleColor} mb-1`}>
+            Rationale:
+          </p>
+          <p className={`text-xs ${config.textColor}`}>
+            {reason}
+          </p>
+        </div>
+      )}
+
+      {/* Contributing Factors */}
+      {config.showFactors && factors && factors.length > 0 && (
+        <div className={`mt-3 pt-3 border-t ${config.borderColor}`}>
+          <p className={`text-xs font-medium ${config.titleColor} mb-2`}>
+            Contributing Factors:
+          </p>
+          <ul className="space-y-1">
+            {factors.map((factor, index) => (
+              <li key={index} className={`text-xs ${config.textColor} flex items-start gap-2`}>
+                <span className={`${config.textColor} mt-0.5 flex-shrink-0`}>•</span>
+                <span>{factor}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
 }
 
 /**
@@ -166,6 +561,11 @@ export default function MedicalSidebar({
             </div>
           </div>
 
+          {/* Vitals Display (Requirements 5.2, 5.3, 5.4, 5.5, 5.6, 7.4) */}
+          {medicalData?.vitalsData && (
+            <VitalsDisplay vitalsData={medicalData.vitalsData} />
+          )}
+
           {/* Chief Complaint (Requirement 3.4) - Collapsible (Task 6.2) */}
           {medicalData?.chiefComplaint && (
             <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
@@ -301,6 +701,7 @@ export default function MedicalSidebar({
             <ClinicalReasoning
               reasoning={clinicalReasoning ?? null}
               isGenerating={isGeneratingReasoning}
+              vitalsData={medicalData?.vitalsData}
             />
           </div>
 

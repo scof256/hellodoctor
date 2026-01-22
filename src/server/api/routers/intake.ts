@@ -168,6 +168,7 @@ export const intakeRouter = createTRPCRouter({
       }
 
       // Create new intake session
+      // INITIAL_MEDICAL_DATA already has currentAgent: 'VitalsTriageAgent' and vitalsStageCompleted: false
       const result = await ctx.db
         .insert(intakeSessions)
         .values({
@@ -176,7 +177,7 @@ export const intakeRouter = createTRPCRouter({
           medicalData: INITIAL_MEDICAL_DATA,
           doctorThought: INITIAL_THOUGHT,
           completeness: 0,
-          currentAgent: 'VitalsTriageAgent', // Start with vitals collection
+          currentAgent: INITIAL_MEDICAL_DATA.currentAgent, // Use currentAgent from INITIAL_MEDICAL_DATA
         })
         .returning();
 
@@ -824,6 +825,7 @@ export const intakeRouter = createTRPCRouter({
       }
 
       // Create new intake session without checking for existing ones
+      // INITIAL_MEDICAL_DATA already has currentAgent: 'VitalsTriageAgent' and vitalsStageCompleted: false
       const result = await ctx.db
         .insert(intakeSessions)
         .values({
@@ -832,7 +834,7 @@ export const intakeRouter = createTRPCRouter({
           medicalData: INITIAL_MEDICAL_DATA,
           doctorThought: INITIAL_THOUGHT,
           completeness: 0,
-          currentAgent: 'VitalsTriageAgent', // Start with vitals collection
+          currentAgent: INITIAL_MEDICAL_DATA.currentAgent, // Use currentAgent from INITIAL_MEDICAL_DATA
         })
         .returning();
 
@@ -2525,6 +2527,7 @@ export const intakeRouter = createTRPCRouter({
       }
 
       // Create new intake session
+      // INITIAL_MEDICAL_DATA already has currentAgent: 'VitalsTriageAgent' and vitalsStageCompleted: false
       const result = await ctx.db
         .insert(intakeSessions)
         .values({
@@ -2533,7 +2536,7 @@ export const intakeRouter = createTRPCRouter({
           medicalData: INITIAL_MEDICAL_DATA,
           doctorThought: INITIAL_THOUGHT,
           completeness: 0,
-          currentAgent: 'Triage',
+          currentAgent: INITIAL_MEDICAL_DATA.currentAgent, // Use currentAgent from INITIAL_MEDICAL_DATA
         })
         .returning();
 

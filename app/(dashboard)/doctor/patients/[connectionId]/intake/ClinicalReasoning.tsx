@@ -3,10 +3,12 @@
 import React, { useState } from 'react';
 import { ChevronDown, ChevronUp, Brain, AlertTriangle, Lightbulb, Loader2 } from 'lucide-react';
 import type { DoctorThought } from '@/types';
+import type { VitalsData } from '@/app/types';
 
 interface ClinicalReasoningProps {
   reasoning: DoctorThought | null;
   isGenerating?: boolean;
+  vitalsData?: VitalsData; // Add vitalsData to show triage decision
 }
 
 /**
@@ -17,12 +19,14 @@ interface ClinicalReasoningProps {
  * - Differential diagnosis ranked by likelihood
  * - Red flags and missing information
  * - Clinical pearls and strategy
+ * - Triage decision (if available)
  * 
- * Requirements: 4.1, 4.2, 4.4, 4.5
+ * Requirements: 4.1, 4.2, 4.4, 4.5, 6.6
  */
 export const ClinicalReasoning: React.FC<ClinicalReasoningProps> = ({
   reasoning,
   isGenerating = false,
+  vitalsData,
 }) => {
   const [isExpanded, setIsExpanded] = useState(true);
 
@@ -92,6 +96,17 @@ export const ClinicalReasoning: React.FC<ClinicalReasoningProps> = ({
       {/* Content */}
       {isExpanded && (
         <div id="clinical-reasoning-content" className="bg-white">
+          {/* Triage Decision Section (Requirement 6.6) */}
+          {vitalsData?.triageDecision && vitalsData.triageDecision !== 'pending' && (
+            <div className="p-4 border-b border-slate-100">
+              <TriageDecisionDisplay
+                decision={vitalsData.triageDecision}
+                reason={vitalsData.triageReason}
+                factors={vitalsData.triageFactors || []}
+              />
+            </div>
+          )}
+
           {/* Strategy Section */}
           {reasoning.strategy && (
             <div className="p-4 border-b border-slate-100">
@@ -218,6 +233,139 @@ const DiagnosisItem: React.FC<DiagnosisItemProps> = ({ condition, probability, r
       <p className="text-xs text-slate-600 leading-relaxed">
         {reasoning}
       </p>
+    </div>
+  );
+};
+
+/**
+ * TriageDecisionDisplay Component
+ * Displays triage decision with type, rationale, and explanations
+ * 
+ * Requirements: 6.2, 6.3, 6.4, 6.5, 6.6
+ */
+interface TriageDecisionDisplayProps {
+  decision: 'emergency' | 'agent-assisted' | 'direct-to-diagnosis' | 'normal' | 'pending';
+  reason: string | null;
+  factors?: string[];
+}
+
+const TriageDecisionDisplay: React.FC<TriageDecisionDisplayProps> = ({ decision, reason, factors }) => {
+  // Don't display if pending
+  if (decision === 'pending') {
+    return null;
+  }
+
+  // Determine styling and content based on decision type
+  const getDecisionConfig = () => {
+    switch (decision) {
+      case 'emergency':
+        return {
+          bgColor: 'bg-red-50',
+          borderColor: 'border-red-300',
+          titleColor: 'text-red-800',
+          textColor: 'text-red-900',
+          icon: '🚨',
+          title: 'Emergency',
+          explanation: 'This case requires immediate medical attention. Emergency conditions have been detected that need urgent care.',
+          showFactors: true
+        };
+      
+      case 'agent-assisted':
+        return {
+          bgColor: 'bg-amber-50',
+          borderColor: 'border-amber-300',
+          titleColor: 'text-amber-800',
+          textColor: 'text-amber-900',
+          icon: '🤝',
+          title: 'Agent-Assisted Intake',
+          explanation: 'This case has been routed for comprehensive agent-assisted intake due to complexity factors that require detailed investigation.',
+          showFactors: true
+        };
+      
+      case 'direct-to-diagnosis':
+        return {
+          bgColor: 'bg-green-50',
+          borderColor: 'border-green-300',
+          titleColor: 'text-green-800',
+          textColor: 'text-green-900',
+          icon: '✓',
+          title: 'Direct to Diagnosis',
+          explanation: 'This case has straightforward presentation and can proceed directly to diagnosis without additional agent assistance.',
+          showFactors: true
+        };
+      
+      case 'normal':
+        return {
+          bgColor: 'bg-blue-50',
+          borderColor: 'border-blue-300',
+          titleColor: 'text-blue-800',
+          textColor: 'text-blue-900',
+          icon: '✓',
+          title: 'Normal Assessment',
+          explanation: 'Vitals and symptoms are within normal ranges.',
+          showFactors: false
+        };
+      
+      default:
+        return {
+          bgColor: 'bg-slate-50',
+          borderColor: 'border-slate-300',
+          titleColor: 'text-slate-800',
+          textColor: 'text-slate-900',
+          icon: 'ℹ️',
+          title: 'Assessment',
+          explanation: '',
+          showFactors: false
+        };
+    }
+  };
+
+  const config = getDecisionConfig();
+
+  return (
+    <div className={`rounded-lg border p-4 ${config.bgColor} ${config.borderColor}`}>
+      <div className="flex items-start gap-2 mb-2">
+        <span className="text-xl" role="img" aria-label={config.title}>
+          {config.icon}
+        </span>
+        <div className="flex-1">
+          <h4 className={`text-sm font-semibold ${config.titleColor} mb-1`}>
+            Triage Decision: {config.title}
+          </h4>
+          <p className={`text-xs ${config.textColor} leading-relaxed`}>
+            {config.explanation}
+          </p>
+        </div>
+      </div>
+
+      {/* Decision Rationale */}
+      {reason && (
+        <div className={`mt-3 pt-3 border-t ${config.borderColor}`}>
+          <p className={`text-xs font-medium ${config.titleColor} mb-1`}>
+            Rationale:
+          </p>
+          <p className={`text-xs ${config.textColor}`}>
+            {reason}
+          </p>
+        </div>
+      )}
+
+      {/* Contributing Factors */}
+      {config.showFactors && factors && factors.length > 0 && (
+        <div className={`mt-3 pt-3 border-t ${config.borderColor}`}>
+          <p className={`text-xs font-medium ${config.titleColor} mb-2`}>
+            Contributing Factors:
+          </p>
+          <ul className="space-y-1">
+            {factors.map((factor, index) => (
+              <li key={index} className={`text-xs ${config.textColor} flex items-start gap-2`}>
+                <span className={`${config.textColor} mt-0.5 flex-shrink-0`}>•</span>
+                <span>{factor}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 };

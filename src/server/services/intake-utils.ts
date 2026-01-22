@@ -5,15 +5,21 @@ import type { MedicalData, AgentRole } from '@/types';
  * Uses priority-based deterministic routing as per the A2A protocol.
  * 
  * Priority Logic:
+ * 0. VitalsTriageAgent: if vitalsStageCompleted is false
  * 1. Triage: if chiefComplaint is null
  * 2. ClinicalInvestigator: if HPI is incomplete (< 50 chars)
  * 3. RecordsClerk: if recordsCheckCompleted is false
  * 4. HistorySpecialist: if medications/allergies/history is missing
  * 5. HandoverSpecialist: if all data is present
  * 
- * Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6
+ * Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 9.1, 9.2, 9.3, 9.4
  */
 export function determineAgent(medicalData: MedicalData): AgentRole {
+  // Priority 0: VitalsTriageAgent - No vitals stage completed yet
+  if (!medicalData.vitalsData?.vitalsStageCompleted) {
+    return 'VitalsTriageAgent';
+  }
+
   // Priority 1: Triage - No chief complaint yet
   if (!medicalData.chiefComplaint || medicalData.chiefComplaint.trim().length === 0) {
     return 'Triage';

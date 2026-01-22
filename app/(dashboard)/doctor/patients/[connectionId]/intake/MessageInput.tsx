@@ -306,7 +306,7 @@ export default function MessageInput({
     <>
       <div
         className={`
-          border-t border-gray-200 bg-white p-4
+          flex-shrink-0 border-t border-gray-200 bg-white p-4 z-10
           ${isDragging ? 'bg-purple-50 border-purple-300' : ''}
         `}
         onDragOver={handleDragOver}
