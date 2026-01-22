@@ -186,9 +186,11 @@ function VitalItem({ label, value, unit, timestamp, isConcerning = 'normal', ico
  */
 interface VitalsDisplayProps {
   vitalsData: VitalsData;
+  expandedSections: Record<string, boolean>;
+  toggleSection: (section: string) => void;
 }
 
-function VitalsDisplay({ vitalsData }: VitalsDisplayProps) {
+function VitalsDisplay({ vitalsData, expandedSections, toggleSection }: VitalsDisplayProps) {
   const tempConcern = isTemperatureConcerning(vitalsData.temperature);
   const bpConcern = isBloodPressureConcerning(vitalsData.bloodPressure);
   
@@ -209,74 +211,112 @@ function VitalsDisplay({ vitalsData }: VitalsDisplayProps) {
   
   return (
     <div className="space-y-4">
-      {/* Patient Demographics */}
-      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 border border-blue-200">
-        <h3 className="font-semibold text-blue-900 mb-3 flex items-center gap-2">
-          <User className="w-4 h-4" />
-          Patient Demographics
-        </h3>
-        <div className="space-y-2">
-          <div className="flex justify-between items-center">
-            <span className="text-sm text-blue-700">Name:</span>
-            <span className="text-sm font-medium text-blue-900">
-              {vitalsData.patientName || <span className="text-slate-400 italic">Not provided</span>}
-            </span>
+      {/* Patient Demographics - Collapsible */}
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <button
+          onClick={() => toggleSection('demographics')}
+          className="w-full px-4 py-3 flex items-center justify-between hover:bg-slate-50 transition-colors"
+        >
+          <h3 className="font-semibold text-slate-800 flex items-center gap-2">
+            <User className="w-4 h-4 text-slate-600" />
+            Patient Demographics
+          </h3>
+          {expandedSections.demographics ? (
+            <ChevronUp className="w-4 h-4 text-slate-500" />
+          ) : (
+            <ChevronDown className="w-4 h-4 text-slate-500" />
+          )}
+        </button>
+        {expandedSections.demographics && (
+          <div className="px-4 pb-4 space-y-2">
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-slate-600">Name:</span>
+              <span className="text-sm font-medium text-slate-900">
+                {vitalsData.patientName || <span className="text-slate-400 italic">Not provided</span>}
+              </span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-slate-600">Age:</span>
+              <span className="text-sm font-medium text-slate-900">
+                {vitalsData.patientAge !== null ? `${vitalsData.patientAge} years` : <span className="text-slate-400 italic">Not provided</span>}
+              </span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-slate-600">Gender:</span>
+              <span className="text-sm font-medium text-slate-900">
+                {formatGender(vitalsData.patientGender)}
+              </span>
+            </div>
           </div>
-          <div className="flex justify-between items-center">
-            <span className="text-sm text-blue-700">Age:</span>
-            <span className="text-sm font-medium text-blue-900">
-              {vitalsData.patientAge !== null ? `${vitalsData.patientAge} years` : <span className="text-slate-400 italic">Not provided</span>}
-            </span>
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="text-sm text-blue-700">Gender:</span>
-            <span className="text-sm font-medium text-blue-900">
-              {formatGender(vitalsData.patientGender)}
-            </span>
-          </div>
-        </div>
+        )}
       </div>
       
-      {/* Vital Signs */}
-      <div>
-        <h3 className="font-semibold text-slate-800 mb-3 flex items-center gap-2">
-          <Activity className="w-4 h-4" />
-          Vital Signs
-        </h3>
-        <div className="space-y-2">
-          <VitalItem
-            label="Temperature"
-            value={tempValue}
-            unit={tempUnit}
-            timestamp={vitalsData.temperature.collectedAt}
-            isConcerning={tempConcern}
-            icon={<Thermometer className="w-4 h-4" />}
-          />
-          
-          <VitalItem
-            label="Weight"
-            value={vitalsData.weight.value}
-            unit={vitalsData.weight.unit}
-            timestamp={vitalsData.weight.collectedAt}
-            icon={<Weight className="w-4 h-4" />}
-          />
-          
-          <VitalItem
-            label="Blood Pressure"
-            value={bpValue}
-            unit="mmHg"
-            timestamp={vitalsData.bloodPressure.collectedAt}
-            isConcerning={bpConcern}
-            icon={<Heart className="w-4 h-4" />}
-          />
-        </div>
+      {/* Vital Signs - Collapsible */}
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <button
+          onClick={() => toggleSection('vitals')}
+          className="w-full px-4 py-3 flex items-center justify-between hover:bg-slate-50 transition-colors"
+        >
+          <h3 className="font-semibold text-slate-800 flex items-center gap-2">
+            <Activity className="w-4 h-4 text-slate-600" />
+            Vital Signs
+          </h3>
+          {expandedSections.vitals ? (
+            <ChevronUp className="w-4 h-4 text-slate-500" />
+          ) : (
+            <ChevronDown className="w-4 h-4 text-slate-500" />
+          )}
+        </button>
+        {expandedSections.vitals && (
+          <div className="px-4 pb-4 space-y-2">
+            <VitalItem
+              label="Temperature"
+              value={tempValue}
+              unit={tempUnit}
+              timestamp={vitalsData.temperature.collectedAt}
+              isConcerning={tempConcern}
+              icon={<Thermometer className="w-4 h-4" />}
+            />
+            
+            <VitalItem
+              label="Weight"
+              value={vitalsData.weight.value}
+              unit={vitalsData.weight.unit}
+              timestamp={vitalsData.weight.collectedAt}
+              icon={<Weight className="w-4 h-4" />}
+            />
+            
+            <VitalItem
+              label="Blood Pressure"
+              value={bpValue}
+              unit="mmHg"
+              timestamp={vitalsData.bloodPressure.collectedAt}
+              isConcerning={bpConcern}
+              icon={<Heart className="w-4 h-4" />}
+            />
+          </div>
+        )}
       </div>
       
-      {/* Current Status */}
+      {/* Current Status - Collapsible */}
       {vitalsData.currentStatus && (
-        <div className="bg-slate-50 rounded-lg border border-slate-200 p-3">
-          <h4 className="text-sm font-medium text-slate-700 mb-1">Current Status</h4>
-          <p className="text-sm text-slate-600">{vitalsData.currentStatus}</p>
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <button
+            onClick={() => toggleSection('currentStatus')}
+            className="w-full px-4 py-3 flex items-center justify-between hover:bg-slate-50 transition-colors"
+          >
+            <h3 className="font-semibold text-slate-800">Current Status</h3>
+            {expandedSections.currentStatus ? (
+              <ChevronUp className="w-4 h-4 text-slate-500" />
+            ) : (
+              <ChevronDown className="w-4 h-4 text-slate-500" />
+            )}
+          </button>
+          {expandedSections.currentStatus && (
+            <div className="px-4 pb-4">
+              <p className="text-sm text-slate-600">{vitalsData.currentStatus}</p>
+            </div>
+          )}
         </div>
       )}
 
@@ -454,6 +494,9 @@ export default function MedicalSidebar({
 }: MedicalSidebarProps) {
   // State for collapsible sections (Task 6.2)
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+    demographics: true,
+    vitals: true,
+    currentStatus: true,
     chiefComplaint: true,
     reviewOfSystems: true,
     medications: true,
@@ -563,7 +606,11 @@ export default function MedicalSidebar({
 
           {/* Vitals Display (Requirements 5.2, 5.3, 5.4, 5.5, 5.6, 7.4) */}
           {medicalData?.vitalsData && (
-            <VitalsDisplay vitalsData={medicalData.vitalsData} />
+            <VitalsDisplay 
+              vitalsData={medicalData.vitalsData}
+              expandedSections={expandedSections}
+              toggleSection={toggleSection}
+            />
           )}
 
           {/* Chief Complaint (Requirement 3.4) - Collapsible (Task 6.2) */}
