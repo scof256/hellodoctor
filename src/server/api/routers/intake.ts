@@ -1091,6 +1091,17 @@ export const intakeRouter = createTRPCRouter({
               updatedAt: new Date(),
             })
             .where(eq(intakeSessions.id, input.sessionId));
+
+          // Create initial greeting message from VitalsTriageAgent (same as create endpoint)
+          const initialGreeting = "Hello! Welcome to HelloDoctor. I'm here to help you today. To get started, could you tell me your name, age, and gender?";
+          
+          await tx.insert(chatMessages).values({
+            sessionId: input.sessionId,
+            role: 'model',
+            content: initialGreeting,
+            activeAgent: 'VitalsTriageAgent',
+            groundingMetadata: null,
+          });
         });
 
         // Audit logging (Requirements: 4.1, 4.2, 4.3)
