@@ -176,6 +176,29 @@ export function mergeMedicalData(
     return update;
   };
 
+  // Merge vitalsData - deep merge to preserve existing values
+  const mergeVitalsData = (
+    current: MedicalData['vitalsData'],
+    update?: Partial<MedicalData['vitalsData']>
+  ): MedicalData['vitalsData'] => {
+    if (!update) return current;
+    
+    return {
+      patientName: update.patientName !== undefined ? update.patientName : current.patientName,
+      patientAge: update.patientAge !== undefined ? update.patientAge : current.patientAge,
+      patientGender: update.patientGender !== undefined ? update.patientGender : current.patientGender,
+      temperature: update.temperature ? { ...current.temperature, ...update.temperature } : current.temperature,
+      weight: update.weight ? { ...current.weight, ...update.weight } : current.weight,
+      bloodPressure: update.bloodPressure ? { ...current.bloodPressure, ...update.bloodPressure } : current.bloodPressure,
+      currentStatus: update.currentStatus !== undefined ? update.currentStatus : current.currentStatus,
+      vitalsCollected: update.vitalsCollected !== undefined ? update.vitalsCollected : current.vitalsCollected,
+      vitalsStageCompleted: update.vitalsStageCompleted !== undefined ? update.vitalsStageCompleted : current.vitalsStageCompleted,
+      triageDecision: update.triageDecision !== undefined ? update.triageDecision : current.triageDecision,
+      triageReason: update.triageReason !== undefined ? update.triageReason : current.triageReason,
+      triageFactors: update.triageFactors !== undefined ? update.triageFactors : current.triageFactors,
+    };
+  };
+
   // Create merged data
   const mergedData: MedicalData = {
     chiefComplaint: mergeString(existing.chiefComplaint, update.chiefComplaint),
@@ -199,6 +222,7 @@ export function mergeMedicalData(
     
     // Object fields - prefer updates if provided
     clinicalHandover: update.clinicalHandover || existing.clinicalHandover,
+    vitalsData: mergeVitalsData(existing.vitalsData, update.vitalsData),
     
     // Booking status - prefer updates
     bookingStatus: update.bookingStatus || existing.bookingStatus,
